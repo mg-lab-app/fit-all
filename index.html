@@ -177,6 +177,10 @@ details[open] > summary::after{content:"−"}
 .empty{padding:22px 10px;text-align:center;color:var(--muted)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(14px + env(safe-area-inset-top,0px));z-index:20;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;font-size:15px;max-width:calc(100% - 32px);box-shadow:0 6px 24px rgba(0,0,0,.25)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+/* Menú del día */
+.menu-c{display:flex;flex-direction:column;gap:6px;padding:12px 0;border-top:1px solid var(--line)}
+.menu-list > .menu-c:first-child{border-top:0}
+.menu-c.hecha{padding:8px 0}
 /* Base de la app instalada */
 html{-webkit-text-size-adjust:100%;color-scheme:light}
 body{margin:0;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
@@ -518,6 +522,7 @@ function vHoy(){
       <div class="row"><button class="btn pri" data-act="importar">Cargar mi copia</button><button class="btn" data-act="crearRutina">Crear mi rutina</button></div>
     </section>` : ""}
     ${verInstalar ? `<section class="card sec">${instalarHTML(true)}</section>` : ""}
+    ${lsGet("fitall_cal_hasta") && lsGet("fitall_cal_hasta") <= addDias(hoy,2) ? `<div class="banner row between"><span>Tus recordatorios del calendario se acaban el ${ddmm(lsGet("fitall_cal_hasta"))}.</span><button class="btn sm" data-act="irRecordatorios">Renovarlos</button></div>` : ""}
     ${avisoCopia ? `<div class="banner row between"><span>Tus datos solo están en este móvil. ${ultCopia ? `Tu última copia es del ${ddmm(ultCopia)}.` : "Aún no has hecho ninguna copia."}</span><button class="btn sm" data-act="exportar">Hacer copia</button></div>` : ""}
     <div class="sec-h"><h2 style="text-transform:capitalize">${esc(fechaLarga(hoy))}</h2><span class="pill acc">${hechasSemana}/${(S.plan||[]).length||9} sesiones esta semana</span></div>
     <section class="card sec"><span class="eyebrow">Entreno de hoy</span>${ses}
@@ -794,6 +799,7 @@ function vDieta(){
       <button class="btn sm" data-act="diaNext" aria-label="Día siguiente" ${f>=hoyISO()?"disabled":""}>›</button>
     </div>
     <section class="card sec">${macrosHTML(t, o)}</section>
+    ${f===hoyISO() ? menuHTML(f) : ""}
     <section class="card sec">
       <span class="eyebrow">Añadir alimento</span>
       <form class="sec" data-form="addItem">
@@ -992,7 +998,7 @@ const opts = (obj, sel) => Object.entries(obj).map(([v,l]) => `<option value="${
 const optsL = (arr, sel) => arr.map(v => `<option ${v===sel?"selected":""}>${esc(v)}</option>`).join("");
 
 function vAjustes(){
-  if (!S.cfgEd) { S.cfgEd = clone({kcal:obj().kcal, p:obj().p, c:obj().c, g:obj().g, inicio:obj().inicio, nombre:obj().nombre, ciclo:ciclo(), suples:obj().suples||[], comidas:comidas()}); S.cfgDirty = false; }
+  if (!S.cfgEd) { S.cfgEd = clone({kcal:obj().kcal, p:obj().p, c:obj().c, g:obj().g, inicio:obj().inicio, nombre:obj().nombre, ciclo:ciclo(), suples:obj().suples||[], comidas:comidas(), recordatorios:rec()}); S.cfgDirty = false; }
   const o = S.cfgEd;
   const kc = (num(o.p)||0)*4 + (num(o.c)||0)*4 + (num(o.g)||0)*9;
   const ip = S.importPend;
@@ -1055,6 +1061,7 @@ function vAjustes(){
       ${coms}
       <button class="btn sm" data-act="cfgAdd" data-l="comidas">+ Añadir comida</button>
     </section>
+    ${recHTML()}
     <div class="row between"><span class="pill ${S.cfgDirty?"warn":"ok"}" id="cfg-estado">${S.cfgDirty?"Cambios sin guardar":"Todo guardado"}</span>
       <div class="row"><button class="btn ghost sm" data-act="cfgReset">Deshacer</button><button class="btn pri" data-act="cfgGuardar">Guardar ajustes</button></div></div>
     ${vRutina()}
@@ -1066,6 +1073,326 @@ function vAjustes(){
     </section>
     <section class="card sec">${instalarHTML(false)}</section>
   </div>`;
+}
+
+/* ---------- menú recomendado ---------- */
+// Plantillas de platos caseros y baratos. Cada alimento: [id, cantidad base, papel]
+// papel "p" = se ajusta para llegar a la proteína, "e" = se ajusta para llegar a las calorías, "f" = fijo.
+const PLANTILLAS = {
+  desayuno: [
+    {nombre:"Tostadas con pavo y un vaso de leche", items:[["pan-integral",70,"e"],["pechuga-de-pavo-en-lonchas",60,"p"],["aceite-de-oliva",0.5,"f"],["leche-semidesnatada",250,"f"]]},
+    {nombre:"Avena con leche, plátano y proteína", items:[["copos-de-avena",50,"e"],["leche-semidesnatada",250,"f"],["platano",1,"f"],["proteina-en-polvo-whey",1,"p"]]},
+    {nombre:"Huevos revueltos con pan y naranja", items:[["huevo",2,"p"],["pan-de-barra",60,"e"],["naranja",1,"f"]]},
+    {nombre:"Queso batido con avena y nueces", items:[["queso-fresco-batido-0",200,"p"],["copos-de-avena",40,"e"],["nueces",15,"f"],["platano",1,"f"]]},
+    {nombre:"Tostadas con jamón y tomate, y leche", items:[["pan-de-barra",70,"e"],["jamon-serrano",40,"p"],["aceite-de-oliva",0.5,"f"],["leche-semidesnatada",200,"f"]]}
+  ],
+  snack: [
+    {nombre:"Batido de proteína con leche y plátano", items:[["proteina-en-polvo-whey",1,"p"],["leche-semidesnatada",250,"f"],["platano",1,"e"]]},
+    {nombre:"Bocadillo de atún", items:[["pan-de-barra",60,"e"],["atun-en-lata-al-natural-escurrido",56,"p"]]},
+    {nombre:"Queso batido con manzana y nueces", items:[["queso-fresco-batido-0",200,"p"],["manzana",1,"f"],["nueces",15,"e"]]},
+    {nombre:"Bocadillo de pavo", items:[["pan-de-barra",60,"e"],["pechuga-de-pavo-en-lonchas",60,"p"]]},
+    {nombre:"Yogur, fruta y un puñado de cacahuetes", items:[["yogur-natural",1,"f"],["queso-fresco-batido-0",100,"p"],["cacahuetes-tostados",20,"e"],["naranja",1,"f"]]},
+    {nombre:"Tostada de jamón y una fruta", items:[["pan-integral",50,"e"],["jamon-serrano",40,"p"],["manzana",1,"f"]]}
+  ],
+  comida: [
+    {nombre:"Arroz con pollo y verduras", items:[["arroz-blanco-crudo",80,"e"],["pechuga-de-pollo-a-la-plancha",150,"p"],["verduras-variadas-cocidas",150,"f"],["aceite-de-oliva",1,"f"]]},
+    {nombre:"Pasta con atún y verduras", items:[["pasta-cruda",90,"e"],["atun-en-lata-al-natural-escurrido",100,"p"],["verduras-variadas-cocidas",100,"f"],["aceite-de-oliva",1,"f"]]},
+    {nombre:"Lomo a la plancha con patatas y ensalada", items:[["patata-cocida",250,"e"],["lomo-de-cerdo-a-la-plancha",150,"p"],["ensalada-lechuga-y-tomate",150,"f"],["aceite-de-oliva",1,"f"]]},
+    {nombre:"Lentejas con pechuga de pollo", items:[["lentejas-cocidas",250,"e"],["pechuga-de-pollo-a-la-plancha",100,"p"],["verduras-variadas-cocidas",100,"f"],["aceite-de-oliva",1,"f"]]},
+    {nombre:"Garbanzos con huevo y ensalada", items:[["garbanzos-cocidos",250,"e"],["huevo",2,"p"],["ensalada-lechuga-y-tomate",150,"f"],["aceite-de-oliva",1,"f"]]},
+    {nombre:"Merluza con patata y verduras", items:[["patata-cocida",250,"e"],["merluza-cocinada",200,"p"],["verduras-variadas-cocidas",150,"f"],["aceite-de-oliva",1,"f"]]},
+    {nombre:"Ternera con arroz y ensalada", items:[["arroz-blanco-crudo",80,"e"],["ternera-magra-cocinada",150,"p"],["ensalada-lechuga-y-tomate",150,"f"],["aceite-de-oliva",1,"f"]]}
+  ],
+  cena: [
+    {nombre:"Pollo a la plancha con verduras y pan", items:[["pechuga-de-pollo-a-la-plancha",150,"p"],["verduras-variadas-cocidas",200,"f"],["pan-integral",50,"e"],["aceite-de-oliva",1,"f"]]},
+    {nombre:"Tortilla francesa con ensalada y pan", items:[["huevo",3,"p"],["ensalada-lechuga-y-tomate",150,"f"],["pan-de-barra",40,"e"],["aceite-de-oliva",0.5,"f"]]},
+    {nombre:"Merluza con ensalada y patata", items:[["merluza-cocinada",200,"p"],["ensalada-lechuga-y-tomate",150,"f"],["patata-cocida",150,"e"],["aceite-de-oliva",1,"f"]]},
+    {nombre:"Salmón con verduras y arroz", items:[["salmon-cocinado",130,"p"],["verduras-variadas-cocidas",200,"f"],["arroz-blanco-cocido",100,"e"]]},
+    {nombre:"Pavo a la plancha con ensalada y patata", items:[["pavo-pechuga-cocinada",150,"p"],["ensalada-lechuga-y-tomate",150,"f"],["patata-cocida",150,"e"],["aceite-de-oliva",1,"f"]]},
+    {nombre:"Revuelto de huevo y atún con verduras", items:[["huevo",2,"p"],["atun-en-lata-al-natural-escurrido",56,"f"],["verduras-variadas-cocidas",200,"f"],["pan-integral",40,"e"]]}
+  ]
+};
+const PESO_COMIDA = {desayuno:0.22, comida:0.33, cena:0.23, snack:0.11};
+function tipoComida(n){
+  const s = slug(n);
+  if (s.includes("desayuno")) return "desayuno";
+  if (s === "comida" || s.includes("almuerzo")) return "comida";
+  if (s.includes("cena")) return "cena";
+  return "snack";
+}
+const hashTxt = s => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
+const alimentoId = id => S.alimentos.find(a => a.id === id);
+function redondear(q, al){
+  if (al.unidad === "ud") { const paso = al.id === "huevo" ? 1 : 0.5; return Math.max(paso, Math.round(q/paso)*paso); }
+  const paso = q < 60 ? 5 : 10; return Math.max(paso, Math.round(q/paso)*paso);
+}
+function macrosDe(al, q){ const r = q/(al.base||100); return {kcal:al.kcal*r, p:al.p*r, c:al.c*r, g:al.g*r}; }
+function montarPlato(tpl, obj){
+  const items = tpl.items.map(([id, q, rol]) => ({al: alimentoId(id), q, q0: q, rol}));
+  if (items.some(i => !i.al)) return null;
+  const suma = (fil, k) => items.filter(fil).reduce((a, i) => a + macrosDe(i.al, i.q)[k], 0);
+  const P = items.find(i => i.rol === "p"), E = items.find(i => i.rol === "e");
+  if (P){
+    const falta = obj.p - suma(i => i !== P, "p");
+    const porU = macrosDe(P.al, 1).p;
+    if (porU > 0) P.q = Math.min(P.q0*2, Math.max(P.q0*0.6, falta/porU));
+    P.q = redondear(P.q, P.al);
+  }
+  if (E){
+    const resto = obj.kcal - suma(i => i !== E, "kcal");
+    const porU = macrosDe(E.al, 1).kcal;
+    if (porU > 0) E.q = Math.min(E.q0*2.2, Math.max(E.q0*0.4, resto/porU));
+    E.q = redondear(E.q, E.al);
+  }
+  const tot = {kcal:0,p:0,c:0,g:0};
+  items.forEach(i => { const m = macrosDe(i.al, i.q); for (const k in tot) tot[k] += m[k]; });
+  return {nombre: tpl.nombre, items: items.map(i => ({al:i.al, q:i.q})), tot};
+}
+const qTxt = (al, q) => al.unidad === "ud" ? `${fmt(q,1)} ${q===1?"ud":"uds"}` : `${fmt(q)} ${al.unidad}`;
+const NOMBRES_UD = {"huevo":["huevo","huevos"],"platano":["plátano","plátanos"],"manzana":["manzana","manzanas"],"naranja":["naranja","naranjas"],
+  "yogur-natural":["yogur natural","yogures naturales"],"proteina-en-polvo-whey":["cacito de proteína en polvo","cacitos de proteína en polvo"],
+  "aceite-de-oliva":["cucharada de aceite de oliva","cucharadas de aceite de oliva"],"galletas-maria":["galleta María","galletas María"],
+  "queso-en-lonchas-tranchete":["loncha de queso","lonchas de queso"]};
+function itemTxt(al, q){
+  if (al.unidad === "ud"){
+    const n = NOMBRES_UD[al.id];
+    const cant = q === 0.5 ? "½" : fmt(q, 1);
+    if (n) return `${cant} ${q > 1 ? n[1] : n[0]}`;
+    return `${cant} ${q > 1 ? "uds" : "ud"} de ${al.nombre.toLowerCase()}`;
+  }
+  return `${fmt(q)} ${al.unidad} de ${al.nombre.toLowerCase()}`;
+}
+// Menú de un día. Con conComido=true descuenta lo ya apuntado y solo planifica las comidas que faltan.
+function planDia(fecha, conComido){
+  const o = obj(), L = comidas();
+  const d = conComido ? (S.diario[fecha] || {}) : {};
+  const items = d.items || [];
+  const hechas = new Set(items.map(i => i.comida));
+  const comido = conComido ? totalesDia(fecha) : {kcal:0, p:0};
+  const pend = L.filter(c => !hechas.has(c));
+  const pesoTot = pend.reduce((a, c) => a + PESO_COMIDA[tipoComida(c)], 0) || 1;
+  const kRest = Math.max(0, o.kcal - comido.kcal), pRest = Math.max(0, o.p - comido.p);
+  const rer = lsGet("fitall_menu_" + fecha) || {};
+  const usados = new Set();
+  return L.map(c => {
+    if (hechas.has(c)) return {comida:c, hecha:true, kcal: items.filter(i => i.comida===c).reduce((a,i) => a+(i.kcal||0), 0)};
+    const w = PESO_COMIDA[tipoComida(c)] / pesoTot;
+    const objC = {kcal: kRest*w, p: pRest*w};
+    if (objC.kcal < 120) return {comida:c, ligera:true, objC};
+    const lista = (PLANTILLAS[tipoComida(c)] || []).map(t => montarPlato(t, objC)).filter(Boolean);
+    if (!lista.length) return {comida:c, sinPlantilla:true, objC};
+    let idx = (hashTxt(fecha + "|" + c) + (rer[c] || 0)) % lista.length;
+    for (let k = 0; k < lista.length && usados.has(lista[idx].nombre); k++) idx = (idx + 1) % lista.length;
+    usados.add(lista[idx].nombre);
+    return Object.assign({comida:c, objC}, lista[idx]);
+  });
+}
+function entrenaHoy(fecha){ return sesionesDeDia(fecha).filter(s => !/recuperaci|opcional/i.test((s.tipo||"") + " " + (s.nombre||""))); }
+function menuHTML(fecha){
+  const plan = planDia(fecha, true);
+  const ent = entrenaHoy(fecha);
+  const filas = plan.map(m => {
+    if (m.hecha) return `<div class="menu-c hecha"><div class="row between"><b>${esc(m.comida)}</b><span class="pill ok">Apuntada · ${fmt(m.kcal)} kcal</span></div></div>`;
+    if (m.ligera) return `<div class="menu-c"><div class="row between"><b>${esc(m.comida)}</b><span class="pill">Opcional</span></div><span class="muted small">Ya casi llegas a tu objetivo. Si tienes hambre, una fruta o un yogur.</span></div>`;
+    if (m.sinPlantilla) return `<div class="menu-c"><b>${esc(m.comida)}</b><div class="muted small">Unas ${fmt(m.objC.kcal)} kcal con ${fmt(m.objC.p)} g de proteína.</div></div>`;
+    return `<div class="menu-c">
+      <div class="row between"><b>${esc(m.comida)}</b><span class="muted small">≈ ${fmt(m.tot.kcal)} kcal · ${fmt(m.tot.p)} g prot.</span></div>
+      <div>${esc(m.nombre)}</div>
+      <div class="muted small">${m.items.map(i => esc(itemTxt(i.al, i.q))).join(" · ")}</div>
+      <div class="row"><button class="btn sm ghost" data-act="menuOtra" data-c="${esc(m.comida)}">Otra opción</button><button class="btn sm" data-act="menuApuntar" data-c="${esc(m.comida)}">Me lo he comido</button></div>
+    </div>`;
+  }).join("");
+  return `<section class="card sec">
+    <div class="sec-h"><span class="eyebrow">Qué comer hoy</span><span class="muted small">Ajustado a lo que te queda</span></div>
+    ${ent.length ? `<div class="hint">Hoy entrenas (${esc(ent.map(s => s.nombre).join(" y "))}): deja la mayor parte de los hidratos en la comida de antes o de después del entreno.</div>` : ""}
+    <div class="menu-list">${filas}</div>
+    <span class="muted small">Si en casa hay otra cosa, apunta lo que comas y el resto del día se reajusta solo.</span>
+  </section>`;
+}
+async function apuntarMenu(c){
+  const f = hoyISO();
+  const m = planDia(f, true).find(x => x.comida === c && x.items);
+  if (!m) return;
+  const d = Object.assign({fecha:f, items:[]}, S.diario[f] || {});
+  d.items = (d.items||[]).concat(m.items.map(i => { const x = macrosDe(i.al, i.q); return {id:nuevoId(), comida:c, nombre:i.al.nombre, ref:i.al.id, q:i.q, u:i.al.unidad, cantTxt:qTxt(i.al, i.q), kcal:Math.round(x.kcal), p:+x.p.toFixed(1), c:+x.c.toFixed(1), g:+x.g.toFixed(1)}; }));
+  await guardarDia(f, d);
+  toast(`${c} apuntada. Puedes tocar cada alimento si cambiaste algo.`);
+}
+
+/* ---------- recordatorios en el calendario ---------- */
+const REC_DEF = {semanas:2, pesarOn:true, pesar:"08:00", pesarDias:[1,3,5], comidasOn:true,
+  horas:{"Desayuno":"08:15","Media mañana":"11:15","Comida":"14:30","Merienda":"17:00","Cena":"21:45"},
+  entrenoOn:true, manana:"10:00", tarde:"18:30", tardeLunes:"18:00", dormirOn:true, dormir:"23:30"};
+function rec(){ const r = (obj().recordatorios || {}); return Object.assign({}, REC_DEF, r, {horas:Object.assign({}, REC_DEF.horas, r.horas || {}), pesarDias: r.pesarDias || REC_DEF.pesarDias}); }
+const FRASES = {
+  entreno: [
+    "La constancia gana a la motivación. Hoy solo tienes que aparecer y hacerlo bien.",
+    "Cada serie bien hecha es músculo que se queda. Técnica primero, peso después.",
+    "No hace falta que sea el mejor entreno de tu vida: basta con que sea el de hoy.",
+    "Más fuerza este mes es menos grasa en la barriga el que viene. A por ello.",
+    "El que entrena cuando no le apetece es el que cambia su cuerpo.",
+    "Apunta cada serie: lo que se mide, mejora.",
+    "Hoy toca sumar. Un kilo más o una repetición más ya es progreso.",
+    "Tu yo de dentro de 12 semanas te está mirando. Dale motivos."
+  ],
+  comida: [
+    "La proteína construye el músculo que estás entrenando. Que no falte en el plato.",
+    "Comer bien no es comer poco: es comer lo que te acerca a tu objetivo.",
+    "Un plato bien hecho hoy vale más que una dieta perfecta el lunes que viene.",
+    "La grasa de la barriga se va en la cocina. El gimnasio pone el músculo.",
+    "Come tranquilo y apúntalo: así sabes exactamente dónde estás.",
+    "Verdura, proteína y un poco de hidrato. Fácil y efectivo."
+  ],
+  pesar: [
+    "Un dato, no un juicio: lo que importa es la media de la semana.",
+    "Báscula en ayunas y después del baño. Mismo momento, mismos datos.",
+    "Si un día sube, respira: el agua sube y baja. La tendencia es lo que manda."
+  ],
+  dormir: [
+    "El músculo crece mientras duermes. 7-8 horas también son entrenamiento.",
+    "Pantallas fuera. Dormir bien quita hambre y da fuerza para mañana.",
+    "Mañana rindes más si hoy descansas. A la cama."
+  ]
+};
+const frase = (tipo, fecha, extra) => { const L = FRASES[tipo]; return L[hashTxt(fecha + tipo + (extra||"")) % L.length]; };
+function horaSesion(s, r){
+  if (s.turno === "Mañana") return r.manana;
+  if (s.turno === "Mediodía") return "14:00";
+  if (s.turno === "Noche") return "20:30";
+  return s.dia === "Lunes" ? r.tardeLunes : r.tarde;
+}
+const durMin = t => { const m = String(t||"").match(/(\d+)/); return m ? Math.min(180, +m[1]) : 60; };
+function resumenUltimo(s){
+  const out = [];
+  for (const e of (s.ejercicios||[])){
+    if (out.length >= 3) break;
+    if ((e.modo||"kg") !== "kg") continue;
+    const u = ultima(e.nombre);
+    if (!u) continue;
+    const v = u.series.filter(x => x.kg); if (!v.length) continue;
+    const mx = Math.max(...v.map(x => x.kg)); const r = Math.max(...v.filter(x => x.kg===mx).map(x => x.reps||0));
+    out.push(`${e.nombre}: ${fmt(mx,2)} kg × ${r}`);
+  }
+  return out;
+}
+function eventosRecordatorio(r, desde, dias){
+  const ev = [], ahora = new Date();
+  for (let k = 0; k < dias; k++){
+    const f = addDias(desde, k), dow = parseISO(f).getDay();
+    const fz = fase(f);
+    const push = (hora, minutos, titulo, texto, tipo) => {
+      if (!/^\d{1,2}:\d{2}$/.test(hora||"")) return;
+      const [h, m] = hora.split(":").map(Number);
+      const ini = parseISO(f); ini.setHours(h, m, 0, 0);
+      if (ini <= ahora) return;
+      ev.push({ini, fin: new Date(ini.getTime() + minutos*60000), titulo, texto, uid:`${f}-${tipo}-${slug(titulo).slice(0,30)}@fit-all`});
+    };
+    if (r.pesarOn && r.pesarDias.includes(dow)) push(r.pesar, 5, "Pésate en ayunas", frase("pesar", f) + "\n\nApúntalo en FIT-ALL (pantalla Hoy).", "pesar");
+    if (r.entrenoOn){
+      for (const s of sesionesDeDia(f)){
+        if (fz && fz.ajuste === "descarga" && /hiit/i.test(s.nombre)) continue;
+        const lineas = [frase("entreno", f, s.nombre), ""];
+        if (fz && !fz.fuera) lineas.push(`Semana ${fz.semana} · ${fz.nombre}: ${fz.rir}. ${fz.series}.`, "");
+        lineas.push("Hoy toca:", ...(s.ejercicios||[]).map(e => `· ${e.nombre} — ${e.objetivo}`));
+        const ult = resumenUltimo(s);
+        if (ult.length) lineas.push("", "Última vez:", ...ult.map(x => "· " + x));
+        push(horaSesion(s, r), durMin(s.duracion), `Entreno · ${s.nombre}`, lineas.join("\n"), "entreno");
+      }
+    }
+    if (r.comidasOn){
+      const plan = planDia(f, false);
+      for (const m of plan){
+        const hora = r.horas[m.comida]; if (!hora) continue;
+        let txt;
+        if (m.items) txt = `${m.nombre}\n${m.items.map(i => `· ${itemTxt(i.al, i.q)}`).join("\n")}\n≈ ${fmt(m.tot.kcal)} kcal · ${fmt(m.tot.p)} g de proteína`;
+        else txt = "Algo ligero: fruta o yogur.";
+        if (tipoComida(m.comida) === "desayuno" && (obj().suples||[]).length) txt += `\n\nNo olvides: ${(obj().suples||[]).map(x => x.nombre.toLowerCase()).join(" y ")}.`;
+        txt += `\n\n${frase("comida", f, m.comida)}\nSi comes otra cosa, apúntala en FIT-ALL y el resto del día se reajusta.`;
+        push(hora, 20, `${m.comida}${m.nombre ? " · " + m.nombre : ""}`, txt, "comida");
+      }
+    }
+    if (r.dormirOn) push(r.dormir, 10, "A descansar", frase("dormir", f), "dormir");
+  }
+  return ev;
+}
+function icsTexto(ev){
+  const esc2 = s => String(s).replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+  const p2 = n => String(n).padStart(2, "0");
+  const loc = d => `${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}T${p2(d.getHours())}${p2(d.getMinutes())}00`;
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+  const enc = new TextEncoder();
+  const plegar = linea => {
+    const out = []; let cur = "", n = 0;
+    for (const ch of linea){ const b = enc.encode(ch).length; if (n + b > (out.length ? 73 : 74)){ out.push(cur); cur = ""; n = 0; } cur += ch; n += b; }
+    out.push(cur); return out.join("\r\n ");
+  };
+  const L = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//FIT-ALL//Recordatorios//ES","CALSCALE:GREGORIAN","METHOD:PUBLISH","X-WR-CALNAME:FIT-ALL"];
+  ev.forEach(e => {
+    L.push("BEGIN:VEVENT", `UID:${e.uid}`, `DTSTAMP:${stamp}`, `DTSTART:${loc(e.ini)}`, `DTEND:${loc(e.fin)}`, `SUMMARY:${esc2(e.titulo)}`, `DESCRIPTION:${esc2(e.texto)}`,
+      "BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${esc2(e.titulo)}`, "TRIGGER:PT0S", "END:VALARM", "END:VEVENT");
+  });
+  L.push("END:VCALENDAR");
+  return L.map(plegar).join("\r\n") + "\r\n";
+}
+async function crearRecordatorios(modo){
+  const r = S.cfgEd && S.cfgEd.recordatorios ? normRec(S.cfgEd.recordatorios) : rec();
+  const ev = eventosRecordatorio(r, hoyISO(), (r.semanas||2)*7);
+  if (!ev.length){ toast("No hay recordatorios que crear: activa alguno y pon las horas."); return; }
+  const data = icsTexto(ev), nombre = "fit-all-recordatorios.ics";
+  let file = null; try { file = new File([data], nombre, {type:"text/calendar"}); } catch(e) {}
+  if (modo === "compartir"){
+    try { if (file && navigator.canShare && navigator.canShare({files:[file]})) { await navigator.share({files:[file], title:"Recordatorios de FIT-ALL"}); lsSet("fitall_cal_hasta", addDias(hoyISO(), (r.semanas||2)*7)); render(); return; } }
+    catch(e){ if (e && e.name === "AbortError") return; }
+  }
+  const url = URL.createObjectURL(file || new Blob([data], {type:"text/calendar"}));
+  const a = document.createElement("a"); a.href = url; a.download = nombre; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 3000);
+  lsSet("fitall_cal_hasta", addDias(hoyISO(), (r.semanas||2)*7)); render();
+  toast(`${ev.length} recordatorios listos. Pulsa «Añadir todo» en el calendario.`);
+}
+function normRec(r){
+  const out = Object.assign({}, REC_DEF, r, {horas:Object.assign({}, r.horas||{})});
+  out.semanas = Math.min(12, Math.max(1, Math.round(num(r.semanas)||2)));
+  out.pesarDias = (r.pesarDias||[]).map(Number).filter(n => n>=0 && n<=6);
+  return out;
+}
+function recHTML(){
+  const r = S.cfgEd.recordatorios;
+  const hasta = lsGet("fitall_cal_hasta");
+  const hora = (id, path, val) => `<input class="tx" type="time" id="${id}" data-rec="${path}" value="${esc(val||"")}" style="max-width:130px">`;
+  const tog = (path, on, lbl) => `<label class="row small" style="gap:8px"><input type="checkbox" id="rc-${slug(path)}" data-rec="${path}" ${on?"checked":""}> ${lbl}</label>`;
+  const dias = [[1,"L"],[2,"M"],[3,"X"],[4,"J"],[5,"V"],[6,"S"],[0,"D"]];
+  return `<section class="card sec" id="recordatorios">
+    <span class="eyebrow">Recordatorios</span>
+    <span class="small">FIT-ALL los mete en el calendario de tu móvil: te avisan aunque la app esté cerrada o no tengas internet. Cada aviso lleva lo que te toca (el entreno con tus últimos pesos, el menú del día) y un mensaje para no perder el foco.</span>
+    ${hasta ? `<div class="hint">Tienes recordatorios hasta el ${ddmm(hasta)}.${hasta <= addDias(hoyISO(),3) ? " Crea los siguientes antes de que se acaben." : ""}</div>` : ""}
+    <div class="sec" style="gap:8px">
+      ${tog("entrenoOn", r.entrenoOn, "<b>Entrenos</b>")}
+      <div class="grid2">
+        <label class="lb">Turno de mañana${hora("rc-man","manana",r.manana)}</label>
+        <label class="lb">Turno de tarde${hora("rc-tar","tarde",r.tarde)}</label>
+        <label class="lb">Tarde de los lunes${hora("rc-tarl","tardeLunes",r.tardeLunes)}</label>
+      </div>
+      <hr>
+      ${tog("comidasOn", r.comidasOn, "<b>Comidas</b> (con el menú recomendado)")}
+      <div class="grid2">${comidas().map((c, i) => `<label class="lb">${esc(c)}${hora("rc-c"+i, "horas."+c, r.horas[c])}</label>`).join("")}</div>
+      <hr>
+      ${tog("pesarOn", r.pesarOn, "<b>Pesarse en ayunas</b>")}
+      <div class="row">${hora("rc-pes","pesar",r.pesar)}<div class="row" style="gap:4px">${dias.map(([d,l]) => `<button class="btn sm ${r.pesarDias.map(Number).includes(d)?"pri":"ghost"}" data-act="recDia" data-d="${d}" aria-pressed="${r.pesarDias.map(Number).includes(d)}" aria-label="Día ${l}">${l}</button>`).join("")}</div></div>
+      <hr>
+      ${tog("dormirOn", r.dormirOn, "<b>Hora de dormir</b>")}
+      ${hora("rc-dor","dormir",r.dormir)}
+      <hr>
+      <label class="lb">Crear para las próximas
+        <select class="tx" id="rc-sem" data-rec="semanas" style="max-width:180px">${[1,2,3,4].map(n => `<option value="${n}" ${String(r.semanas)===String(n)?"selected":""}>${n} ${n===1?"semana":"semanas"}</option>`).join("")}</select></label>
+    </div>
+    <button class="btn pri block" data-act="recCrear">Añadir recordatorios al calendario</button>
+    <button class="btn ghost sm" data-act="recCompartir">¿No se abre el calendario? Compartir el archivo</button>
+    <details><summary class="small">Cómo añadirlos y cómo quitarlos</summary><div class="small muted" style="max-width:62ch">
+      <p style="margin:6px 0">Antes de la primera vez, en la app Calendario crea un calendario llamado «FIT-ALL» (Calendarios → Añadir calendario). Al pulsar el botón, elige ese calendario y toca «Añadir todo».</p>
+      <p style="margin:6px 0">Para quitarlos o renovarlos con datos nuevos, borra el calendario «FIT-ALL» y vuelve a crearlo. Los recordatorios usan los pesos y el menú del día en que los creas, así que conviene renovarlos cada una o dos semanas.</p>
+    </div></details>
+  </section>`;
 }
 
 /* ---------- rutina editable ---------- */
@@ -1134,7 +1461,8 @@ async function guardarCfg(){
     inicio: o.inicio || OBJ_DEF.inicio, nombre: (o.nombre||"").trim(),
     ciclo: {semanas: sem, fases: o.ciclo.fases.map(f => ({nombre:(f.nombre||"").trim()||"Semana", rir:(f.rir||"").trim(), series:(f.series||"").trim(), ajuste:f.ajuste||"igual"}))},
     suples: o.suples.filter(s => (s.nombre||"").trim()).map(s => ({k: s.k || slug(s.nombre) || nuevoId(), nombre:s.nombre.trim(), det:(s.det||"").trim()})),
-    comidas: o.comidas.map(c => (c||"").trim()).filter(Boolean)
+    comidas: o.comidas.map(c => (c||"").trim()).filter(Boolean),
+    recordatorios: normRec(o.recordatorios || rec())
   });
   if (!d.comidas.length) d.comidas = OBJ_DEF.comidas.slice();
   S.obj = d; S.cfgEd = null; S.cfgDirty = false; render();
@@ -1171,6 +1499,12 @@ view.addEventListener("input", e => {
     else if (t.dataset.cf){ S.cfgEd.ciclo.fases[i][t.dataset.cf] = t.value; marcarCfg(); }
     else if (t.dataset.cs){ S.cfgEd.suples[i][t.dataset.cs] = t.value; marcarCfg(); }
     else if (t.dataset.cm){ S.cfgEd.comidas[i] = t.value; marcarCfg(); }
+    else if (t.dataset.rec){
+      const r = S.cfgEd.recordatorios, k = t.dataset.rec;
+      if (k.startsWith("horas.")) r.horas[k.slice(6)] = t.value;
+      else r[k] = t.type === "checkbox" ? t.checked : t.value;
+      marcarCfg();
+    }
   }
   // rutina
   if (S.rutEd){
@@ -1235,6 +1569,7 @@ view.addEventListener("click", async e => {
   else if (a === "delAlimento"){ S.alimentos = S.alimentos.filter(x => x.id!==b.dataset.id); render(); await borrarDoc("alimentos/"+b.dataset.id); }
   else if (a === "delMedida"){ S.medidas = S.medidas.filter(x => x.id!==b.dataset.id); render(); await borrarDoc("medidas/"+b.dataset.id); }
   else if (a === "exportar") exportar();
+  else if (a === "irRecordatorios"){ S.tab = "ajustes"; render(); const el = $("#recordatorios"); if (el) el.scrollIntoView({block:"start"}); }
   else if (a === "importar") $("#imp-file").click();
   else if (a === "importOk" && S.importPend) aplicarCopia(S.importPend);
   else if (a === "importCancelar"){ S.importPend = null; render(); }
@@ -1267,6 +1602,11 @@ view.addEventListener("click", async e => {
   }
   // ajustes
   else if (a === "cfgGuardar") guardarCfg();
+  else if (a === "menuOtra"){ const f = hoyISO(), k = "fitall_menu_" + f, o = lsGet(k) || {}; o[b.dataset.c] = (o[b.dataset.c] || 0) + 1; lsSet(k, o); render(); }
+  else if (a === "menuApuntar") apuntarMenu(b.dataset.c);
+  else if (a === "recDia" && S.cfgEd){ const r = S.cfgEd.recordatorios, d = +b.dataset.d; r.pesarDias = r.pesarDias.map(Number).includes(d) ? r.pesarDias.map(Number).filter(x => x !== d) : r.pesarDias.map(Number).concat([d]); S.cfgDirty = true; render(); }
+  else if (a === "recCrear"){ if (S.cfgDirty) await guardarCfg(); crearRecordatorios("descargar"); }
+  else if (a === "recCompartir"){ if (S.cfgDirty) await guardarCfg(); crearRecordatorios("compartir"); }
   else if (a === "cfgReset"){ S.cfgEd = null; S.cfgDirty = false; render(); }
   else if (a === "kcalDeMacros" && S.cfgEd){ const o = S.cfgEd; o.kcal = String(Math.round((num(o.p)||0)*4+(num(o.c)||0)*4+(num(o.g)||0)*9)); S.cfgDirty = true; render(); }
   else if (a === "cfgAdd" && S.cfgEd){
