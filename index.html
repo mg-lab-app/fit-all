@@ -546,7 +546,9 @@ function vHoy(){
 function macrosHTML(t, o){
   const fila = (lbl, v, max, col, u="g") => {
     const pct = max ? Math.min(100, v/max*100) : 0;
-    return `<div class="macro"><div class="macro-top"><span><span class="dot" style="background:${col}"></span> ${lbl}</span><span><b>${fmt(v)}</b> <span class="muted">/ ${fmt(max)} ${u}</span></span></div>
+    const resto = max - v;
+    const estado = resto > 0.5 ? `faltan ${fmt(resto)} ${u}` : (v > max*1.08 ? `${fmt(-resto)} ${u} de más` : "completado");
+    return `<div class="macro"><div class="macro-top"><span><span class="dot" style="background:${col}"></span> ${lbl}</span><span><b>${fmt(v)}</b> <span class="muted">/ ${fmt(max)} ${u} · ${estado}</span></span></div>
       <div class="bar ${v>max*1.08?"over":""}"><i style="width:${pct}%;background:${col}"></i></div></div>`;
   };
   const rest = o.kcal - t.kcal;
@@ -804,7 +806,7 @@ function vDieta(){
         <datalist id="al-lista">${lista}</datalist>
         <div class="grid2">
           <label class="lb">Cantidad<span class="fld"><input id="al-cant" name="cant" inputmode="decimal" placeholder="100"><span id="al-ud">g</span></span></label>
-          <label class="lb">Comida<select class="tx" id="al-comida" name="comida">${optsL(comidas(), comidaPorHora())}</select></label>
+          <label class="lb">Comida<select class="tx" id="al-comida" name="comida">${optsL(comidas(), S.ultComida && comidas().includes(S.ultComida) ? S.ultComida : comidaPorHora())}</select></label>
         </div>
         <div class="muted small" id="al-prev">Elige un alimento de tu lista para ver sus calorías.</div>
         <button class="btn pri" type="submit">Añadir</button>
@@ -1175,6 +1177,8 @@ function planDia(fecha, conComido){
     if (hechas.has(c)) return {comida:c, hecha:true, kcal: items.filter(i => i.comida===c).reduce((a,i) => a+(i.kcal||0), 0)};
     const w = PESO_COMIDA[tipoComida(c)] / pesoTot;
     const objC = {kcal: kRest*w, p: pRest*w};
+    const tipo = tipoComida(c);
+    if (tipo === "comida" || tipo === "cena") return {comida:c, libre:true, objC};
     if (objC.kcal < 120) return {comida:c, ligera:true, objC};
     const lista = (PLANTILLAS[tipoComida(c)] || []).map(t => montarPlato(t, objC)).filter(Boolean);
     if (!lista.length) return {comida:c, sinPlantilla:true, objC};
@@ -1189,8 +1193,19 @@ function menuHTML(fecha){
   const plan = planDia(fecha, true);
   const ent = entrenaHoy(fecha);
   const filas = plan.map(m => {
-    if (m.hecha) return `<div class="menu-c hecha"><div class="row between"><b>${esc(m.comida)}</b><span class="pill ok">Apuntada · ${fmt(m.kcal)} kcal</span></div></div>`;
+    if (m.hecha){
+      const its = ((S.diario[fecha] || {}).items || []).filter(i => i.comida === m.comida);
+      const pr = its.reduce((a, i) => a + (i.p || 0), 0);
+      const libre = ["comida","cena"].includes(tipoComida(m.comida));
+      return `<div class="menu-c hecha"><div class="row between"><b>${esc(m.comida)}</b><span class="pill ok">Apuntada · ${fmt(m.kcal)} kcal · ${fmt(pr)} g prot.</span></div>
+        ${libre ? `<div class="muted small">${its.map(i => esc(i.nombre)).join(" · ")}</div><div class="row"><button class="btn sm ghost" data-act="irApuntar" data-c="${esc(m.comida)}">Añadir algo más</button></div>` : ""}</div>`;
+    }
     if (m.ligera) return `<div class="menu-c"><div class="row between"><b>${esc(m.comida)}</b><span class="pill">Opcional</span></div><span class="muted small">Ya casi llegas a tu objetivo. Si tienes hambre, una fruta o un yogur.</span></div>`;
+    if (m.libre) return `<div class="menu-c">
+      <div class="row between"><b>${esc(m.comida)}</b><span class="muted small">Te quedan ≈ ${fmt(m.objC.kcal)} kcal · ${fmt(m.objC.p)} g prot.</span></div>
+      <div class="muted small">Lo que haya en casa. Apúntalo y te digo cómo vas. Para ir bien, que lleve una ración de carne, pescado, huevos o legumbre del tamaño de tu mano.</div>
+      <div class="row"><button class="btn sm pri" data-act="irApuntar" data-c="${esc(m.comida)}">Apuntar ${esc(m.comida.toLowerCase())}</button></div>
+    </div>`;
     if (m.sinPlantilla) return `<div class="menu-c"><b>${esc(m.comida)}</b><div class="muted small">Unas ${fmt(m.objC.kcal)} kcal con ${fmt(m.objC.p)} g de proteína.</div></div>`;
     return `<div class="menu-c">
       <div class="row between"><b>${esc(m.comida)}</b><span class="muted small">≈ ${fmt(m.tot.kcal)} kcal · ${fmt(m.tot.p)} g prot.</span></div>
@@ -1200,10 +1215,10 @@ function menuHTML(fecha){
     </div>`;
   }).join("");
   return `<section class="card sec">
-    <div class="sec-h"><span class="eyebrow">Qué comer hoy</span><span class="muted small">Ajustado a lo que te queda</span></div>
+    <div class="sec-h"><span class="eyebrow">Tu día de comidas</span><span class="muted small">Se ajusta a lo que llevas</span></div>
     ${ent.length ? `<div class="hint">Hoy entrenas (${esc(ent.map(s => s.nombre).join(" y "))}): deja la mayor parte de los hidratos en la comida de antes o de después del entreno.</div>` : ""}
     <div class="menu-list">${filas}</div>
-    <span class="muted small">Si en casa hay otra cosa, apunta lo que comas y el resto del día se reajusta solo.</span>
+    <span class="muted small">Desayuno y meriendas: te propongo algo ajustado a lo que te falta. Comida y cena: apunta lo que comas y el resto del día se reajusta solo.</span>
   </section>`;
 }
 async function apuntarMenu(c){
@@ -1302,10 +1317,11 @@ function eventosRecordatorio(r, desde, dias){
         const hora = r.horas[m.comida]; if (!hora) continue;
         let txt;
         if (m.items) txt = `${m.nombre}\n${m.items.map(i => `· ${itemTxt(i.al, i.q)}`).join("\n")}\n≈ ${fmt(m.tot.kcal)} kcal · ${fmt(m.tot.p)} g de proteína`;
+        else if (m.libre) txt = `Lo que haya en casa. Intenta que lleve unos ${fmt(m.objC.p)} g de proteína: una ración de carne, pescado, huevos o legumbre del tamaño de tu mano.\nAl terminar, apúntalo en FIT-ALL y verás lo que te falta para hoy.`;
         else txt = "Algo ligero: fruta o yogur.";
         if (tipoComida(m.comida) === "desayuno" && (obj().suples||[]).length) txt += `\n\nNo olvides: ${(obj().suples||[]).map(x => x.nombre.toLowerCase()).join(" y ")}.`;
-        txt += `\n\n${frase("comida", f, m.comida)}\nSi comes otra cosa, apúntala en FIT-ALL y el resto del día se reajusta.`;
-        push(hora, 20, `${m.comida}${m.nombre ? " · " + m.nombre : ""}`, txt, "comida");
+        txt += `\n\n${frase("comida", f, m.comida)}` + (m.libre ? "" : "\nSi comes otra cosa, apúntala en FIT-ALL y el resto del día se reajusta.");
+        push(hora, 20, m.libre ? `${m.comida} · apúntala en FIT-ALL` : `${m.comida}${m.nombre ? " · " + m.nombre : ""}`, txt, "comida");
       }
     }
     if (r.dormirOn) push(r.dormir, 10, "A descansar", frase("dormir", f), "dormir");
@@ -1601,6 +1617,12 @@ view.addEventListener("click", async e => {
   else if (a === "cfgGuardar") guardarCfg();
   else if (a === "menuOtra"){ const f = hoyISO(), k = "fitall_menu_" + f, o = lsGet(k) || {}; o[b.dataset.c] = (o[b.dataset.c] || 0) + 1; lsSet(k, o); render(); }
   else if (a === "menuApuntar") apuntarMenu(b.dataset.c);
+  else if (a === "irApuntar"){
+    const sel = $("#al-comida"), inp = $("#al-nombre");
+    if (sel) sel.value = b.dataset.c;
+    if (inp){ inp.scrollIntoView({block:"center", behavior:"smooth"}); setTimeout(() => inp.focus(), 250); }
+    toast(`Apuntando en ${b.dataset.c}. Añade cada cosa que comas.`);
+  }
   else if (a === "recDia" && S.cfgEd){ const r = S.cfgEd.recordatorios, d = +b.dataset.d; r.pesarDias = r.pesarDias.map(Number).includes(d) ? r.pesarDias.map(Number).filter(x => x !== d) : r.pesarDias.map(Number).concat([d]); S.cfgDirty = true; render(); }
   else if (a === "recCrear"){ if (S.cfgDirty) await guardarCfg(); crearRecordatorios("descargar"); }
   else if (a === "recCompartir"){ if (S.cfgDirty) await guardarCfg(); crearRecordatorios("compartir"); }
@@ -1668,6 +1690,7 @@ view.addEventListener("submit", async e => {
   }
   else if (k === "addItem"){
     const al = alimentoPorNombre(fd.nombre);
+    S.ultComida = fd.comida;
     if (!al){ toast("Ese alimento no está en tu lista. Añádelo en «Mis alimentos» o usa «Añadir a mano»."); return; }
     const q = num(fd.cant) ?? (al.unidad==="ud"?1:100);
     const r = q / (al.base||100);
