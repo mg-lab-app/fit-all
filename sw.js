@@ -1,5 +1,5 @@
 // FIT-ALL: funciona sin conexión. Cambia VERSION al publicar una versión nueva.
-const VERSION = "fitall-v3";
+const VERSION = "fitall-v4";
 const BASE = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png", "./icons/favicon.png"];
 
 self.addEventListener("install", e => {
