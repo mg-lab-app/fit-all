@@ -174,6 +174,12 @@ details[open] > summary::after{content:"−"}
 .empty{padding:22px 10px;text-align:center;color:var(--muted)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(14px + env(safe-area-inset-top,0px));z-index:20;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;font-size:15px;max-width:calc(100% - 32px);box-shadow:0 6px 24px rgba(0,0,0,.25)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+/* Agua */
+.agua-big{font-family:var(--f-display);font-size:34px;font-weight:700;line-height:1;color:var(--blue)}
+.gotas{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;max-width:360px}
+.gota{background:none;border:0;padding:4px;border-radius:10px;aspect-ratio:1;display:grid;place-items:center}
+.gota svg{width:100%;height:100%;max-width:30px;fill:transparent;stroke:color-mix(in srgb,var(--blue) 55%,var(--line));stroke-width:1.6;transition:fill .15s,filter .15s}
+.gota.llena svg{fill:var(--blue);stroke:var(--blue);filter:drop-shadow(0 0 6px rgba(77,139,255,.55))}
 /* Menú del día */
 .menu-c{display:flex;flex-direction:column;gap:6px;padding:12px 0;border-top:1px solid var(--line)}
 .menu-list > .menu-c:first-child{border-top:0}
@@ -254,7 +260,7 @@ const CICLO_DEF = {semanas:12, fases:[
   {nombre:"Apretar", rir:"1 rep de margen (0-1 en máquinas)", series:"Las series indicadas", ajuste:"igual"},
   {nombre:"Descarga", rir:"3-4 reps de margen", series:"Series −40 % y sin HIIT del jueves", ajuste:"descarga"}
 ]};
-const OBJ_DEF = {kcal:2350, p:150, c:280, g:70, inicio:"2026-09-28", nombre:"", ciclo:CICLO_DEF,
+const OBJ_DEF = {kcal:2350, p:150, c:280, g:70, aguaL:3, vasoMl:250, inicio:"2026-09-28", nombre:"", ciclo:CICLO_DEF,
   suples:[{k:"proteina", nombre:"Proteína en polvo", det:"Un cacito; súmalo también en Dieta"},{k:"creatina", nombre:"Creatina", det:"3-5 g, cualquier hora del día"}],
   comidas:["Desayuno","Media mañana","Comida","Merienda","Cena"]};
 const obj = () => Object.assign({}, OBJ_DEF, S.obj || {});
@@ -529,6 +535,7 @@ function vHoy(){
       <div class="sec-h"><span class="eyebrow">Comida de hoy</span><button class="btn sm ghost" data-act="tab" data-tab="dieta">Apuntar comida</button></div>
       ${macrosHTML(t, o)}
     </section>
+    ${aguaHTML(hoy)}
     <section class="card">
       <span class="eyebrow">Suplementos</span>
       ${supleHTML(hoy, sup)}
@@ -542,6 +549,26 @@ function vHoy(){
       </form>
     </section>
   </div>`;
+}
+const GOTA = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5C9 7 5.5 10.6 5.5 14.5a6.5 6.5 0 0 0 13 0C18.5 10.6 15 7 12 2.5z"/></svg>`;
+function aguaHTML(f){
+  const o = obj(), vaso = Math.max(50, num(o.vasoMl) || 250), meta = Math.max(500, Math.round((num(o.aguaL) || 3) * 1000));
+  const n = Math.max(1, Math.round(meta / vaso)), ml = (S.diario[f] || {}).agua || 0, llenos = Math.min(n, Math.round(ml / vaso));
+  const L = x => fmt(x / 1000, 2);
+  const hecho = ml >= meta;
+  return `<section class="card sec" id="agua">
+    <div class="sec-h"><span class="eyebrow">Agua</span><span class="pill ${hecho ? "ok" : ""}">${hecho ? "Objetivo cumplido" : `Faltan ${L(meta - ml)} L`}</span></div>
+    <div class="row between" style="align-items:baseline"><div><span class="agua-big">${L(ml)}</span> <span class="muted">/ ${L(meta)} L</span></div><span class="muted small">${llenos} de ${n} vasos</span></div>
+    <div class="gotas" role="group" aria-label="Vasos de agua">${Array.from({length:n}, (_, i) => `<button class="gota ${i < llenos ? "llena" : ""}" data-act="aguaSet" data-n="${i+1}" data-f="${f}" aria-label="${i+1} ${i ? "vasos" : "vaso"}" aria-pressed="${i < llenos}">${GOTA}</button>`).join("")}</div>
+    <div class="row between"><span class="muted small">Cada gota es un vaso de ${fmt(vaso)} ml. Toca la siguiente cada vez que bebas.</span>
+      <div class="row" style="gap:6px"><button class="btn sm ghost" data-act="aguaMas" data-d="-1" data-f="${f}" aria-label="Quitar un vaso" ${ml <= 0 ? "disabled" : ""}>−</button><button class="btn sm pri" data-act="aguaMas" data-d="1" data-f="${f}">+ 1 vaso</button></div></div>
+    ${entrenaHoy(f).length && f === hoyISO() ? `<span class="muted small">Hoy entrenas: si sudas mucho, suma medio litro más.</span>` : ""}
+  </section>`;
+}
+async function guardarAgua(f, ml){
+  const d = Object.assign({fecha:f, items:[]}, S.diario[f] || {});
+  d.agua = Math.max(0, Math.round(ml));
+  await guardarDia(f, d);
 }
 function macrosHTML(t, o){
   const fila = (lbl, v, max, col, u="g") => {
@@ -798,6 +825,7 @@ function vDieta(){
       <button class="btn sm" data-act="diaNext" aria-label="Día siguiente" ${f>=hoyISO()?"disabled":""}>›</button>
     </div>
     <section class="card sec">${macrosHTML(t, o)}</section>
+    ${aguaHTML(f)}
     ${f===hoyISO() ? menuHTML(f) : ""}
     <section class="card sec">
       <span class="eyebrow">Añadir alimento</span>
@@ -944,7 +972,7 @@ function vProgreso(){
         <div class="stat"><span class="muted small">kcal / día</span><b>${fmt(kmed)}</b></div>
         <div class="stat"><span class="muted small">Proteína / día</span><b>${pmed==null?"—":fmt(pmed)+" g"}</b></div>
       </div>
-      <span class="muted small">${supTxt ? supTxt + " · " : ""}${diasDieta.length} días con comida apuntada.</span>
+      <span class="muted small">${supTxt ? supTxt + " · " : ""}${diasDieta.length} días con comida apuntada.${ult7d.some(d => d.agua) ? ` Agua: ${fmt(ult7d.reduce((a, d) => a + (d.agua || 0), 0) / 7000, 1)} L al día de media.` : ""}</span>
     </section>
     <section class="card sec">
       <div class="sec-h"><span class="eyebrow">Peso corporal</span>${estado}</div>
@@ -997,7 +1025,7 @@ const opts = (obj, sel) => Object.entries(obj).map(([v,l]) => `<option value="${
 const optsL = (arr, sel) => arr.map(v => `<option ${v===sel?"selected":""}>${esc(v)}</option>`).join("");
 
 function vAjustes(){
-  if (!S.cfgEd) { S.cfgEd = clone({kcal:obj().kcal, p:obj().p, c:obj().c, g:obj().g, inicio:obj().inicio, nombre:obj().nombre, ciclo:ciclo(), suples:obj().suples||[], comidas:comidas(), recordatorios:rec()}); S.cfgDirty = false; }
+  if (!S.cfgEd) { S.cfgEd = clone({kcal:obj().kcal, p:obj().p, c:obj().c, g:obj().g, aguaL:obj().aguaL, vasoMl:obj().vasoMl, inicio:obj().inicio, nombre:obj().nombre, ciclo:ciclo(), suples:obj().suples||[], comidas:comidas(), recordatorios:rec()}); S.cfgDirty = false; }
   const o = S.cfgEd;
   const kc = (num(o.p)||0)*4 + (num(o.c)||0)*4 + (num(o.g)||0)*9;
   const ip = S.importPend;
@@ -1032,6 +1060,10 @@ function vAjustes(){
         <label class="lb">Proteína (g)<input class="tx" id="ob-p" data-c="p" inputmode="decimal" value="${esc(o.p)}"></label>
         <label class="lb">Hidratos (g)<input class="tx" id="ob-c" data-c="c" inputmode="decimal" value="${esc(o.c)}"></label>
         <label class="lb">Grasa (g)<input class="tx" id="ob-g" data-c="g" inputmode="decimal" value="${esc(o.g)}"></label>
+      </div>
+      <div class="grid2">
+        <label class="lb">Agua al día (litros)<input class="tx" id="ob-agua" data-c="aguaL" inputmode="decimal" value="${esc(String(o.aguaL).replace(".", ","))}"></label>
+        <label class="lb">Tamaño del vaso (ml)<input class="tx" id="ob-vaso" data-c="vasoMl" inputmode="numeric" value="${esc(o.vasoMl)}"></label>
       </div>
       <div class="row between"><span class="muted small" id="kc-macros">Los macros suman ${fmt(kc)} kcal.</span><button class="btn sm" data-act="kcalDeMacros">Usar esa cifra</button></div>
       <details><summary class="small">Cómo se calcularon</summary><div class="small muted" style="max-width:62ch">
@@ -1471,6 +1503,7 @@ async function guardarCfg(){
   const sem = Math.round(num(o.ciclo.semanas)||0);
   if (sem < 1) { toast("Pon cuántas semanas dura el plan."); return; }
   const d = Object.assign({}, S.obj||{}, v, {
+    aguaL: Math.min(8, Math.max(0.5, num(o.aguaL) || 3)), vasoMl: Math.min(1000, Math.max(50, Math.round(num(o.vasoMl) || 250))),
     inicio: o.inicio || OBJ_DEF.inicio, nombre: (o.nombre||"").trim(),
     ciclo: {semanas: sem, fases: o.ciclo.fases.map(f => ({nombre:(f.nombre||"").trim()||"Semana", rir:(f.rir||"").trim(), series:(f.series||"").trim(), ajuste:f.ajuste||"igual"}))},
     suples: o.suples.filter(s => (s.nombre||"").trim()).map(s => ({k: s.k || slug(s.nombre) || nuevoId(), nombre:s.nombre.trim(), det:(s.det||"").trim()})),
@@ -1617,6 +1650,15 @@ view.addEventListener("click", async e => {
   else if (a === "cfgGuardar") guardarCfg();
   else if (a === "menuOtra"){ const f = hoyISO(), k = "fitall_menu_" + f, o = lsGet(k) || {}; o[b.dataset.c] = (o[b.dataset.c] || 0) + 1; lsSet(k, o); render(); }
   else if (a === "menuApuntar") apuntarMenu(b.dataset.c);
+  else if (a === "aguaSet"){
+    const f = b.dataset.f, vaso = Math.max(50, num(obj().vasoMl) || 250), n = +b.dataset.n;
+    const llenos = Math.round(((S.diario[f] || {}).agua || 0) / vaso);
+    guardarAgua(f, (n === llenos ? n - 1 : n) * vaso);
+  }
+  else if (a === "aguaMas"){
+    const f = b.dataset.f, vaso = Math.max(50, num(obj().vasoMl) || 250);
+    guardarAgua(f, ((S.diario[f] || {}).agua || 0) + (+b.dataset.d) * vaso);
+  }
   else if (a === "irApuntar"){
     const sel = $("#al-comida"), inp = $("#al-nombre");
     if (sel) sel.value = b.dataset.c;
