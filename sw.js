@@ -1,5 +1,5 @@
 // FIT-ALL: funciona sin conexión. Cambia VERSION al publicar una versión nueva.
-const VERSION = "fitall-v6";
+const VERSION = "fitall-v7";
 const BASE = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png", "./icons/favicon.png"];
 
 self.addEventListener("install", e => {
@@ -16,6 +16,9 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   const r = e.request;
   if (r.method !== "GET") return;
+  // Solo la propia app y sus fuentes. Lo demás (por ejemplo, tu hoja de Google) va directo a internet.
+  const u = new URL(r.url);
+  if (u.origin !== self.location.origin && !/fonts\.(googleapis|gstatic)\.com$/.test(u.hostname)) return;
   // La app: primero internet (para tener siempre la última versión); sin conexión, la guardada.
   if (r.mode === "navigate") {
     e.respondWith(fetch(r)

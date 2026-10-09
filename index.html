@@ -370,6 +370,7 @@ async function init(){
   } catch(e){ S.sinDb = true; }
   repartir(docs);
   render();
+  setTimeout(() => enviarHoja(), 1500);
 }
 
 /* ---------- copia de seguridad ---------- */
@@ -735,7 +736,8 @@ async function guardarSesion(){
   if (origen && origen !== id){ S.sesiones = S.sesiones.filter(s => s.id !== origen); lsSet("borrador_"+origen, null); }
   S.ed = null; S.tab = "entreno"; render(); window.scrollTo(0,0);
   await escribir("sesiones/"+id, doc);
-  if (origen && origen !== id) await borrarDoc("sesiones/"+origen);
+  if (origen && origen !== id){ await borrarDoc("sesiones/"+origen); const [fo, no] = origen.split("_"); hojaSesion({fecha:fo, n:+no, nombre:doc.nombre, ejercicios:doc.ejercicios}, true); }
+  hojaSesion(doc);
   toast(nuevos.length ? `Guardada. Récord: ${nuevos.slice(0,2).join(", ")}${nuevos.length>2?"…":""}` : "Sesión guardada");
 }
 
@@ -896,6 +898,7 @@ function actualizarPrevia(){
 function guardarDia(f, d){
   S.diario[f] = d;
   render();
+  hojaDieta(f);
   return escribir("diario/"+f, d);
 }
 const nuevoId = () => Math.random().toString(36).slice(2,10);
@@ -1096,6 +1099,7 @@ function vAjustes(){
     <div class="row between"><span class="pill ${S.cfgDirty?"warn":"ok"}" id="cfg-estado">${S.cfgDirty?"Cambios sin guardar":"Todo guardado"}</span>
       <div class="row"><button class="btn ghost sm" data-act="cfgReset">Deshacer</button><button class="btn pri" data-act="cfgGuardar">Guardar ajustes</button></div></div>
     ${vRutina()}
+    ${hojaHTML()}
     <section class="card sec" id="datos">
       <span class="eyebrow">Tus datos</span>
       <span class="small">Todo se guarda solo en este móvil, sin cuentas ni servidores. Haz una copia de vez en cuando y guárdala en iCloud, Google Drive o mándatela por correo: si cambias de móvil o borras la app, con ella lo recuperas todo.</span>
@@ -1440,6 +1444,110 @@ function recHTML(){
   </section>`;
 }
 
+/* ---------- conexión con la hoja de Google ---------- */
+const hojaUrl = () => (obj().hojaUrl || "").trim();
+function claveHoja(){
+  let k = lsGet("fitall_clave");
+  if (!k){ k = (crypto && crypto.randomUUID) ? crypto.randomUUID() : (nuevoId() + nuevoId() + nuevoId()); lsSet("fitall_clave", k); }
+  return k;
+}
+const pendHoja = () => lsGet("fitall_hoja_pend") || {sesiones:{}, medidas:{}, dieta:{}};
+const nPend = () => { const p = pendHoja(); return Object.keys(p.sesiones).length + Object.keys(p.medidas).length + Object.keys(p.dieta).length; };
+function payloadSesion(s, vaciar){
+  const fz = fase(s.fecha); if (!fz) return null;
+  let ejercicios = (s.ejercicios || []).map(e => ({nombre:e.nombre, series:(e.series||[]).map(x => ({kg:x.kg ?? null, reps:x.reps ?? null})), rir:e.rir ?? null, notas:e.notas || ""}));
+  if (vaciar){ const pl = (S.plan||[]).find(p => p.n === s.n); ejercicios = ((pl && pl.ejercicios) || s.ejercicios || []).map(e => ({nombre:e.nombre, series:[], rir:null, notas:""})); }
+  return {semana:fz.semana, n:s.n, nombre:s.nombre, fecha:s.fecha, ejercicios};
+}
+function payloadMedidas(semana){
+  const ini = addDias(obj().inicio, (semana-1)*7), fin = addDias(ini, 6);
+  const sem = S.medidas.filter(m => m.fecha >= ini && m.fecha <= fin).sort((a,b) => a.fecha < b.fecha ? -1 : 1);
+  const pesos = sem.filter(m => m.peso != null).map(m => m.peso).slice(-4);
+  const cin = sem.filter(m => m.cintura != null);
+  return {semana, inicio:ini, pesos, cintura: cin.length ? cin[cin.length-1].cintura : null};
+}
+function payloadDieta(f){
+  const t = totalesDia(f), o = obj(), d = S.diario[f] || {};
+  return {fecha:f, kcal:Math.round(t.kcal), p:Math.round(t.p), c:Math.round(t.c), g:Math.round(t.g), agua:+((d.agua||0)/1000).toFixed(2), objKcal:o.kcal, objP:o.p};
+}
+function encolar(tipo, clave, datos){
+  if (!hojaUrl() || !datos) return;
+  const p = pendHoja(); p[tipo][clave] = datos; lsSet("fitall_hoja_pend", p);
+  clearTimeout(encolar.t); encolar.t = setTimeout(enviarHoja, tipo === "dieta" ? 4000 : 800);
+}
+function hojaSesion(s, vaciar){ encolar("sesiones", s.fecha + "_" + s.n, payloadSesion(s, vaciar)); }
+function hojaMedidas(fecha){ const fz = fase(fecha); if (fz) encolar("medidas", String(fz.semana), payloadMedidas(fz.semana)); }
+function hojaDieta(f){ encolar("dieta", f, payloadDieta(f)); }
+let enviando = false;
+async function enviarHoja(manual){
+  const url = hojaUrl();
+  if (!url || enviando) return null;
+  const p = pendHoja();
+  const cuerpo = {clave:claveHoja(), sesiones:Object.values(p.sesiones), medidas:Object.values(p.medidas), dieta:Object.values(p.dieta)};
+  if (!cuerpo.sesiones.length && !cuerpo.medidas.length && !cuerpo.dieta.length) return null;
+  if (!navigator.onLine) return null;
+  enviando = true;
+  try {
+    const r = await fetch(url, {method:"POST", body:JSON.stringify(cuerpo), headers:{"Content-Type":"text/plain;charset=utf-8"}});
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error === "clave" ? "clave" : (j.error || "error"));
+    // Quita de la cola solo lo enviado (si mientras tanto cambió algo, se queda).
+    const ahora = pendHoja();
+    for (const t of ["sesiones","medidas","dieta"]) for (const [k, v] of Object.entries(p[t])) if (JSON.stringify(ahora[t][k]) === JSON.stringify(v)) delete ahora[t][k];
+    lsSet("fitall_hoja_pend", ahora);
+    lsSet("fitall_hoja_ok", {cuando:new Date().toISOString(), hoja:j.hoja, noEncontrados:j.noEncontrados || []});
+    if (manual) toast(`Enviado a «${j.hoja}»: ${j.sesiones} sesiones, ${j.medidas} semanas de medidas y ${j.dieta} días de dieta.`);
+    if (S.tab === "ajustes") pedirRender();
+    return j;
+  } catch(e){
+    lsSet("fitall_hoja_err", {cuando:new Date().toISOString(), msg: String(e && e.message || e)});
+    if (manual) toast(String(e && e.message) === "clave" ? "La hoja ya está conectada a otro móvil. Mira «Cambiar de móvil» en Ajustes." : "No se pudo enviar a la hoja. Lo reintento sola cuando haya conexión.");
+    if (S.tab === "ajustes") pedirRender();
+    return null;
+  } finally { enviando = false; }
+}
+function enviarTodo(){
+  if (!hojaUrl()) { toast("Primero pega la dirección de tu hoja."); return; }
+  const p = {sesiones:{}, medidas:{}, dieta:{}};
+  S.sesiones.forEach(s => { const x = payloadSesion(s); if (x) p.sesiones[s.fecha + "_" + s.n] = x; });
+  const sems = new Set(S.medidas.map(m => fase(m.fecha)).filter(Boolean).map(f => f.semana));
+  sems.forEach(n => p.medidas[String(n)] = payloadMedidas(n));
+  Object.keys(S.diario).forEach(f => { const d = S.diario[f]; if ((d.items||[]).length || d.agua) p.dieta[f] = payloadDieta(f); });
+  lsSet("fitall_hoja_pend", p);
+  toast("Enviando todo a tu hoja… puede tardar unos segundos.");
+  enviarHoja(true);
+}
+let codigoHoja = null;
+function cargarCodigoHoja(){ if (codigoHoja) return; fetch("hoja-codigo.gs").then(r => r.ok ? r.text() : null).then(t => { if (t){ codigoHoja = t; if (S.tab === "ajustes") pedirRender(); } }).catch(() => {}); }
+function hojaHTML(){
+  cargarCodigoHoja();
+  const url = hojaUrl(), ok = lsGet("fitall_hoja_ok"), err = lsGet("fitall_hoja_err"), pend = nPend();
+  const estado = !url ? "" : (ok ? `<div class="hint up">Conectada a «${esc(ok.hoja)}». Último envío: ${esc(new Date(ok.cuando).toLocaleString("es-ES", {day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"}))}.${pend ? ` Pendientes: ${pend}.` : ""}</div>` : `<div class="hint">Aún no se ha enviado nada.${pend ? ` Pendientes: ${pend}.` : ""}</div>`);
+  const fallos = ok && ok.noEncontrados && ok.noEncontrados.length ? `<details><summary class="small">No encontré en la hoja (${ok.noEncontrados.length})</summary><div class="small muted">${ok.noEncontrados.slice(0, 30).map(esc).join(" · ")}</div><p class="small muted">Son ejercicios o sesiones que tienen otro nombre en la hoja o que añadiste en la app. Lo demás sí se ha escrito.</p></details>` : "";
+  const errTxt = err && (!ok || err.cuando > ok.cuando) ? `<div class="hint" style="color:var(--warn)">El último envío falló${err.msg === "clave" ? ": la hoja está conectada a otro móvil" : ""}. ${err.msg === "clave" ? "" : "Lo reintento sola."}</div>` : "";
+  return `<section class="card sec" id="hoja">
+    <span class="eyebrow">Tu hoja de Google</span>
+    <span class="small">Lo que apuntes en FIT-ALL se copia solo en tu hoja «Registro de entrenamiento»: los entrenos en Sem 1, Sem 2…, el peso y la cintura en Medidas, y la dieta y el agua en una pestaña nueva. Lo que cambies a mano en la hoja no vuelve a la app, así que apunta siempre en FIT-ALL.</span>
+    ${estado}${errTxt}${fallos}
+    <label class="lb">Dirección de la hoja (la que acaba en /exec)<input class="tx" id="hoja-url" type="url" inputmode="url" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(url)}"></label>
+    <div class="row"><button class="btn ${url ? "" : "pri"}" data-act="hojaGuardar">${url ? "Cambiar dirección" : "Conectar"}</button>${url ? `<button class="btn pri" data-act="hojaTodo">Enviar todo ahora</button>` : ""}</div>
+    <details ${url ? "" : "open"}><summary class="small"><b>Cómo conectarla (una sola vez, mejor desde el ordenador)</b></summary>
+      <ol class="small" style="padding-left:20px;margin:8px 0;display:flex;flex-direction:column;gap:6px;max-width:62ch">
+        <li>Abre tu hoja «Registro de entrenamiento · Manuel» en el ordenador.</li>
+        <li>Arriba, menú <b>Extensiones → Apps Script</b>. Se abre una pestaña nueva con código.</li>
+        <li>Borra lo que haya, pega el código de abajo y pulsa el icono del disquete para guardar.</li>
+        <li>Arriba a la derecha: <b>Implementar → Nueva implementación</b>. En la rueda de «Tipo», elige <b>Aplicación web</b>.</li>
+        <li>En «Ejecutar como» deja <b>Yo</b> y en «Quién tiene acceso» elige <b>Cualquier usuario</b>. Pulsa <b>Implementar</b>.</li>
+        <li>Te pedirá permiso: <b>Autorizar acceso</b>, elige tu cuenta. Si sale «Google no ha verificado esta aplicación», pulsa <b>Configuración avanzada → Ir a … (no seguro)</b> y <b>Permitir</b>. Es tu propio código, no pasa nada.</li>
+        <li>Copia la <b>URL de la aplicación web</b> (acaba en /exec), mándatela al móvil por correo o WhatsApp, pégala aquí arriba y pulsa <b>Conectar</b>.</li>
+      </ol>
+      <div class="row"><button class="btn sm" data-act="hojaCopiar" ${codigoHoja ? "" : "disabled"}>Copiar el código</button></div>
+      <textarea class="tx small" id="hoja-codigo" readonly rows="5" style="font-family:ui-monospace,Menlo,monospace;font-size:12px!important">${esc(codigoHoja || "Cargando el código…")}</textarea>
+    </details>
+    <details><summary class="small">Cambiar de móvil</summary><p class="small muted" style="max-width:62ch">Por seguridad, la hoja solo acepta datos del móvil que la conectó. Si cambias de móvil, en Apps Script ve a <b>Configuración del proyecto → Propiedades del script</b>, borra «CLAVE_FITALL» y conecta desde el móvil nuevo.</p></details>
+  </section>`;
+}
+
 /* ---------- rutina editable ---------- */
 function vRutina(){
   if (!S.rutEd){
@@ -1596,8 +1704,9 @@ view.addEventListener("click", async e => {
   else if (a === "borrarSesion" && S.ed && S.ed.origen){
     const id = S.ed.origen;
     if (S.borrarArm !== id){ S.borrarArm = id; render(); return; }
+    const borrada = S.sesiones.find(s => s.id === id);
     S.borrarArm = null; S.sesiones = S.sesiones.filter(s => s.id!==id); lsSet("borrador_"+id, null); S.ed = null; render();
-    await borrarDoc("sesiones/"+id); toast("Sesión borrada");
+    await borrarDoc("sesiones/"+id); if (borrada) hojaSesion(borrada, true); toast("Sesión borrada");
   }
   else if (a === "timerMas" && S.timer){ S.timer.fin += 15000; S.timer.total += 15; S.timer.pitado = false; pintarTimer(); }
   else if (a === "timerStop"){ S.timer = null; pintarTimer(); }
@@ -1613,7 +1722,26 @@ view.addEventListener("click", async e => {
     d.items = (d.items||[]).filter(i => i.id !== b.dataset.id); guardarDia(f, d);
   }
   else if (a === "delAlimento"){ S.alimentos = S.alimentos.filter(x => x.id!==b.dataset.id); render(); await borrarDoc("alimentos/"+b.dataset.id); }
-  else if (a === "delMedida"){ S.medidas = S.medidas.filter(x => x.id!==b.dataset.id); render(); await borrarDoc("medidas/"+b.dataset.id); }
+  else if (a === "delMedida"){ const fm = (S.medidas.find(x => x.id === b.dataset.id) || {}).fecha; S.medidas = S.medidas.filter(x => x.id!==b.dataset.id); render(); await borrarDoc("medidas/"+b.dataset.id); if (fm) hojaMedidas(fm); }
+  else if (a === "hojaGuardar"){
+    const v = ($("#hoja-url")?.value || "").trim();
+    if (v && !/^https:\/\/script\.google(usercontent)?\.com\/.+/.test(v)){ toast("Esa dirección no parece la de tu hoja. Tiene que empezar por https://script.google.com/"); return; }
+    S.obj = Object.assign({}, S.obj || {}, {hojaUrl: v}); await escribir("config/objetivos", S.obj);
+    lsSet("fitall_hoja_ok", null); lsSet("fitall_hoja_err", null); render();
+    if (!v){ toast("Hoja desconectada"); return; }
+    try {
+      const r = await fetch(v); const j = await r.json();
+      if (!j.ok) throw 0;
+      lsSet("fitall_hoja_ok", {cuando:new Date().toISOString(), hoja:j.hoja, noEncontrados:[]}); render();
+      toast(`Conectada a «${j.hoja}». Enviando tus datos…`); enviarTodo();
+    } catch(e){ toast("No pude conectar con esa dirección. Revisa que la copiaste entera y que en «Quién tiene acceso» pusiste «Cualquier usuario»."); }
+  }
+  else if (a === "hojaTodo") enviarTodo();
+  else if (a === "hojaCopiar" && codigoHoja){
+    const ta = $("#hoja-codigo");
+    try { navigator.clipboard.writeText(codigoHoja).then(() => toast("Código copiado"), () => { ta.focus(); ta.select(); toast("Selecciona todo el texto y cópialo"); }); }
+    catch(e){ ta.focus(); ta.select(); toast("Selecciona todo el texto y cópialo"); }
+  }
   else if (a === "exportar") exportar();
   else if (a === "irRecordatorios"){ S.tab = "ajustes"; render(); const el = $("#recordatorios"); if (el) el.scrollIntoView({block:"start"}); }
   else if (a === "importar") $("#imp-file").click();
@@ -1715,7 +1843,7 @@ view.addEventListener("submit", async e => {
     const f = hoyISO(); const prev = S.medidas.find(m => m.fecha===f) || {};
     const doc = Object.assign({}, prev, {fecha:f, peso:p}); delete doc.id;
     S.medidas = S.medidas.filter(m => m.fecha!==f).concat([Object.assign({id:f}, doc)]).sort((a,b) => a.fecha<b.fecha?-1:1);
-    render(); await escribir("medidas/"+f, doc); toast("Peso guardado");
+    render(); await escribir("medidas/"+f, doc); hojaMedidas(f); toast("Peso guardado");
   }
   else if (k === "addMedida"){
     const f = fd.fecha || hoyISO(); const p = num(fd.peso), c = num(fd.cintura);
@@ -1727,7 +1855,8 @@ view.addEventListener("submit", async e => {
     S.medidas = S.medidas.filter(m => m.fecha!==f && m.id!==editando).concat([Object.assign({id:f}, doc)]).sort((a,b) => a.fecha<b.fecha?-1:1);
     S.medEdit = null; render();
     await escribir("medidas/"+f, doc);
-    if (editando && editando !== f) await borrarDoc("medidas/"+editando);
+    if (editando && editando !== f){ await borrarDoc("medidas/"+editando); hojaMedidas(editando); }
+    hojaMedidas(f);
     toast(editando ? "Medida actualizada" : "Medida guardada");
   }
   else if (k === "addItem"){
@@ -1772,6 +1901,7 @@ view.addEventListener("submit", async e => {
   }
 });
 
+window.addEventListener("online", () => enviarHoja());
 document.getElementById("imp-file").addEventListener("change", e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) leerCopia(f); });
 
 let toastT = null;
