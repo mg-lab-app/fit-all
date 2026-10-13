@@ -187,6 +187,17 @@ details[open] > summary::after{content:"−"}
 .estim .row{gap:8px;flex-wrap:nowrap;align-items:baseline}
 .estim-tot{border-top:1px solid var(--line);padding-top:6px}
 textarea.tx{resize:vertical;min-height:52px;font:inherit}
+/* Escáner de códigos de barras */
+.scan{position:fixed;inset:0;z-index:30;background:var(--bg);overflow-y:auto;padding:calc(14px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px))}
+.scan[hidden]{display:none}
+.scan-in{max-width:608px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.scan-body{display:flex;flex-direction:column;gap:12px}
+.scan-video{position:relative;border-radius:12px;overflow:hidden;background:#111;aspect-ratio:4/3}
+.scan-video video{width:100%;height:100%;object-fit:cover;display:block}
+.scan-guia{position:absolute;left:12%;right:12%;top:32%;bottom:32%;border:2px solid var(--accent);border-radius:10px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
+body.scan-abierto{overflow:hidden}
+.chkrow{display:flex;gap:10px;align-items:flex-start;flex-wrap:nowrap;line-height:1.35}
+.chkrow input{width:20px;height:20px;flex:none;margin:0;accent-color:var(--accent)}
 /* Base de la app instalada */
 html{-webkit-text-size-adjust:100%;color-scheme:dark}
 body{margin:0;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
@@ -834,7 +845,7 @@ function vDieta(){
     <section class="card sec">${macrosHTML(t, o)}</section>
     ${aguaHTML(f)}
     <section class="card sec">
-      <span class="eyebrow">Apuntar lo que has comido</span>
+      <div class="row between"><span class="eyebrow">Apuntar lo que has comido</span><button class="btn sm" data-act="escanear" type="button"> Escanear código</button></div>
       <form class="sec" data-form="addItem">
         <label class="lb">Escríbelo como lo dirías<textarea class="tx" id="al-nombre" name="nombre" rows="2" placeholder="Ej.: un plato de lentejas con chorizo, un trozo de pan y una manzana"></textarea></label>
         <label class="lb">Comida<select class="tx" id="al-comida" name="comida">${optsL(comidas(), S.ultComida && comidas().includes(S.ultComida) ? S.ultComida : comidaPorHora())}</select></label>
@@ -880,6 +891,7 @@ function vDieta(){
   </div>`;
 }
 function alimentoPorNombre(n){ n = String(n||"").trim().toLowerCase(); return S.alimentos.find(a => a.nombre.toLowerCase() === n); }
+const ICONO_BARRAS = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="vertical-align:-3px"><path fill="currentColor" d="M3 5h2v14H3zM7 5h1v14H7zM10 5h2v14h-2zM14 5h1v14h-1zM17 5h1v14h-1zM20 5h1v14h-1z"/></svg>`;
 const AYUDA_PREV = "Pon cuánto si lo sabes («dos huevos», «medio plato», «200 g de pollo»). Si no, cuento una ración normal.";
 function actualizarPrevia(){
   const prev = $("#al-prev"), libre = $("#al-libre"), inp = $("#al-nombre");
@@ -1285,6 +1297,205 @@ function estimarComida(texto){
   });
   cerrar();
   return out;
+}
+
+/* ---------- escanear el código de barras (Open Food Facts) ---------- */
+const scan = {el:null, stream:null, ctrl:null, timer:null, vivo:false, prod:null, code:""};
+const eanValido = c => {
+  if (!/^\d{8}$|^\d{12,14}$/.test(c)) return false;
+  const d = c.split("").map(Number), chk = d.pop();
+  const s = d.reverse().reduce((a, x, i) => a + x * (i % 2 === 0 ? 3 : 1), 0);
+  return (10 - s % 10) % 10 === chk;
+};
+function scanPintar(html){ if (scan.el) scan.el.querySelector(".scan-body").innerHTML = html; }
+function abrirEscaner(){
+  if (!scan.el){
+    scan.el = document.createElement("div");
+    scan.el.className = "scan"; scan.el.setAttribute("role", "dialog"); scan.el.setAttribute("aria-label", "Escanear código de barras");
+    scan.el.innerHTML = `<div class="scan-in"><div class="row between"><span class="eyebrow">Escanear producto</span><button class="iconbtn" data-sc="cerrar" aria-label="Cerrar">✕</button></div><div class="scan-body"></div></div>`;
+    document.body.appendChild(scan.el);
+    scan.el.addEventListener("click", scanClick);
+    scan.el.addEventListener("input", scanInput);
+    scan.el.addEventListener("submit", scanSubmit);
+  }
+  scan.el.hidden = false; document.body.classList.add("scan-abierto");
+  scan.prod = null; scan.code = "";
+  pantallaCamara();
+}
+function cerrarEscaner(){ pararCamara(); if (scan.el) scan.el.hidden = true; document.body.classList.remove("scan-abierto"); }
+function pararCamara(){
+  scan.vivo = false; clearTimeout(scan.timer);
+  try { scan.ctrl && scan.ctrl.stop(); } catch(e){}
+  scan.ctrl = null;
+  if (scan.stream){ scan.stream.getTracks().forEach(t => t.stop()); scan.stream = null; }
+}
+function cargarScript(src){
+  return new Promise((ok, mal) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => mal(new Error("No se pudo cargar " + src)); document.head.appendChild(s); });
+}
+async function pantallaCamara(){
+  scanPintar(`<div class="scan-video"><video id="sc-video" playsinline muted autoplay></video><div class="scan-guia"></div></div>
+    <span class="small muted" id="sc-msg">Apunta al código de barras del envase y mantén el móvil quieto.</span>
+    <form class="row" data-sc-form="codigo">
+      <label class="fld grow"><input id="sc-num" name="codigo" inputmode="numeric" placeholder="O escribe el número" aria-label="Número del código de barras" autocomplete="off"></label>
+      <button class="btn" type="submit">Buscar</button>
+    </form>`);
+  const video = $("#sc-video"), msg = $("#sc-msg");
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ msg.textContent = "Este navegador no deja usar la cámara. Escribe el número que hay debajo de las barras."; return; }
+  scan.vivo = true;
+  const visto = c => { if (!scan.vivo || !eanValido(c)) return false; pararCamara(); if (navigator.vibrate) navigator.vibrate(60); buscarProducto(c); return true; };
+  try {
+    let detector = null;
+    if ("BarcodeDetector" in window){
+      try { const f = await BarcodeDetector.getSupportedFormats(); if (f.includes("ean_13")) detector = new BarcodeDetector({formats: f.filter(x => /ean|upc/.test(x))}); } catch(e){}
+    }
+    if (detector){
+      scan.stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}, width:{ideal:1280}}, audio:false});
+      if (!scan.vivo){ pararCamara(); return; }
+      video.srcObject = scan.stream; await video.play().catch(() => {});
+      const bucle = async () => {
+        if (!scan.vivo) return;
+        try { const r = await detector.detect(video); for (const b of r) if (visto(b.rawValue)) return; } catch(e){}
+        scan.timer = setTimeout(bucle, 180);
+      };
+      bucle();
+    } else {
+      if (!window.ZXingBrowser) await cargarScript("vendor/zxing-browser.min.js");
+      if (!scan.vivo) return;
+      const lector = new ZXingBrowser.BrowserMultiFormatReader();
+      scan.ctrl = await lector.decodeFromConstraints({video:{facingMode:{ideal:"environment"}}, audio:false}, video, (res) => { if (res) visto(res.getText()); });
+      if (!scan.vivo) pararCamara();
+    }
+  } catch(e){
+    pararCamara();
+    msg.innerHTML = e && (e.name === "NotAllowedError" || e.name === "SecurityError")
+      ? "FIT-ALL no tiene permiso para usar la cámara. Dáselo en los ajustes del navegador o escribe el número del código de barras."
+      : "No se ha podido abrir la cámara. Escribe el número que hay debajo de las barras.";
+  }
+}
+async function buscarProducto(code){
+  scan.code = code;
+  // Primero en tus alimentos (sirve sin internet)
+  const propio = S.alimentos.find(a => a.ean === code);
+  if (propio){ scan.prod = {nombre:propio.nombre, marca:"", k:propio.kcal, p:propio.p, c:propio.c, g:propio.g, u:propio.unidad === "ml" ? "ml" : "g", racion:propio.racion||null, paquete:propio.paquete||null, guardado:propio.id}; return pantallaProducto(); }
+  scanPintar(`<div class="empty">Buscando el producto ${esc(code)}…</div>`);
+  const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 12000);
+  try {
+    const url = `https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=product_name,product_name_es,generic_name_es,brands,quantity,product_quantity,product_quantity_unit,serving_quantity,nutriments,image_front_small_url`;
+    const r = await fetch(url, {signal: ctl.signal}); clearTimeout(to);
+    const j = r.ok ? await r.json() : null;
+    const pr = j && j.status === 1 && j.product;
+    const n = pr && pr.nutriments || {};
+    const kcal = n["energy-kcal_100g"] != null ? +n["energy-kcal_100g"] : (n["energy_100g"] != null ? +n["energy_100g"] / 4.184 : null);
+    const nombre = pr ? (pr.product_name_es || pr.product_name || pr.generic_name_es || "").trim() : "";
+    if (!pr || kcal == null || isNaN(kcal)){ return pantallaEtiqueta(nombre ? "Está en la base de datos, pero sin la información nutricional." : "Este producto no está en la base de datos.", nombre); }
+    const unidad = /ml|cl|l/i.test(pr.product_quantity_unit || "") ? "ml" : "g";
+    scan.prod = {nombre: nombre || "Producto " + code, marca: (pr.brands || "").split(",")[0].trim(), img: pr.image_front_small_url || "",
+      k: kcal, p: +n.proteins_100g || 0, c: +n.carbohydrates_100g || 0, g: +n.fat_100g || 0, u: unidad,
+      racion: +pr.serving_quantity > 0 ? +pr.serving_quantity : null, paquete: +pr.product_quantity > 0 ? +pr.product_quantity : null};
+    pantallaProducto();
+  } catch(e){
+    clearTimeout(to);
+    pantallaEtiqueta(navigator.onLine === false || (e && e.name === "AbortError") ? "Sin internet no puedo buscar el producto." : "No he podido buscar el producto ahora mismo.", "");
+  }
+}
+function pantallaProducto(){
+  const p = scan.prod, u = p.u;
+  const def = p.paquete && p.paquete <= 250 ? p.paquete : (p.racion || p.paquete || 100);
+  const chips = [];
+  if (p.paquete) chips.push([p.paquete, `Todo el paquete (${fmt(p.paquete)} ${u})`]);
+  if (p.paquete && p.paquete >= 40) chips.push([p.paquete / 2, `La mitad (${fmt(p.paquete/2)} ${u})`]);
+  if (p.racion && p.racion !== p.paquete) chips.push([p.racion, `1 ración (${fmt(p.racion)} ${u})`]);
+  scanPintar(`<div class="row" style="gap:12px;flex-wrap:nowrap;align-items:center">
+      ${p.img ? `<img src="${esc(p.img)}" alt="" style="width:56px;height:56px;object-fit:contain;border-radius:8px;background:#fff">` : ""}
+      <div style="min-width:0"><b>${esc(p.nombre)}</b>${p.marca ? `<div class="muted small">${esc(p.marca)}</div>` : ""}</div>
+    </div>
+    <span class="muted small">Por 100 ${u}: ${fmt(p.k)} kcal · P ${fmt(p.p,1)} g · H ${fmt(p.c,1)} g · G ${fmt(p.g,1)} g</span>
+    <form class="sec" data-sc-form="apuntar">
+      <span class="eyebrow">¿Cuánto te has comido?</span>
+      ${chips.length ? `<div class="row" style="gap:6px">${chips.map(([v, l]) => `<button type="button" class="btn sm ${v===def?"pri":"ghost"}" data-sc="cant" data-v="${v}">${esc(l)}</button>`).join("")}</div>` : ""}
+      <div class="grid2">
+        <label class="lb">Cantidad<span class="fld"><input id="sc-cant" name="cant" inputmode="decimal" value="${esc(String(+def.toFixed(1)).replace(".", ","))}"><span>${u}</span></span></label>
+        <label class="lb">Comida<select class="tx" name="comida">${optsL(comidas(), S.ultComida && comidas().includes(S.ultComida) ? S.ultComida : comidaPorHora())}</select></label>
+      </div>
+      <div class="estim" id="sc-tot"></div>
+      ${p.guardado ? "" : `<label class="chkrow small"><input type="checkbox" name="guardar" checked> Guardar en «Mis alimentos» (la próxima vez lo encuentra sin internet)</label>`}
+      <div class="row between"><button type="button" class="btn ghost" data-sc="otra">Escanear otro</button><button class="btn pri" type="submit">Apuntar</button></div>
+    </form>
+    <span class="muted small">Datos de Open Food Facts. Si no coinciden con la etiqueta, corrígelos después en «Mis alimentos».</span>`);
+  scanTotales();
+}
+function pantallaEtiqueta(motivo, nombre){
+  scan.prod = null;
+  scanPintar(`<div class="hint">${esc(motivo)} Mira la tabla nutricional de la etiqueta (la columna «por 100 g») y cópiala aquí:</div>
+    <form class="sec" data-sc-form="etiqueta">
+      <label class="lb">Nombre<input class="tx" name="nombre" value="${esc(nombre)}" placeholder="Ej.: Gominolas Haribo"></label>
+      <div class="grid4">
+        <label class="lb">kcal<input class="tx" name="kcal" inputmode="decimal" placeholder="por 100 g"></label>
+        <label class="lb">Proteína<input class="tx" name="p" inputmode="decimal" placeholder="g"></label>
+        <label class="lb">Hidratos<input class="tx" name="c" inputmode="decimal" placeholder="g"></label>
+        <label class="lb">Grasa<input class="tx" name="g" inputmode="decimal" placeholder="g"></label>
+      </div>
+      <div class="grid2">
+        <label class="lb">Te has comido<span class="fld"><input name="cant" inputmode="decimal" placeholder="El peso del paquete"><span>g</span></span></label>
+        <label class="lb">Comida<select class="tx" name="comida">${optsL(comidas(), S.ultComida && comidas().includes(S.ultComida) ? S.ultComida : comidaPorHora())}</select></label>
+      </div>
+      <label class="chkrow small"><input type="checkbox" name="guardar" checked> Guardar en «Mis alimentos» con este código</label>
+      <div class="row between"><button type="button" class="btn ghost" data-sc="otra">Escanear otro</button><button class="btn pri" type="submit">Apuntar</button></div>
+    </form>`);
+}
+function scanTotales(){
+  const box = $("#sc-tot"), p = scan.prod; if (!box || !p) return;
+  const q = num($("#sc-cant").value) || 0, f = q / 100;
+  box.innerHTML = `<div class="row between estim-tot" style="border:0;padding:0"><b>≈ ${fmt(p.k*f)} kcal</b><span class="muted small">P ${fmt(p.p*f)} g · H ${fmt(p.c*f)} g · G ${fmt(p.g*f)} g</span></div>`;
+}
+function scanClick(e){
+  const b = e.target.closest("[data-sc]"); if (!b) return;
+  const a = b.dataset.sc;
+  if (a === "cerrar") cerrarEscaner();
+  else if (a === "otra"){ scan.prod = null; pantallaCamara(); }
+  else if (a === "cant"){
+    $("#sc-cant").value = String(+(+b.dataset.v).toFixed(1)).replace(".", ",");
+    scan.el.querySelectorAll('[data-sc="cant"]').forEach(x => { x.classList.toggle("pri", x === b); x.classList.toggle("ghost", x !== b); });
+    scanTotales();
+  }
+}
+function scanInput(e){ if (e.target.id === "sc-cant") scanTotales(); }
+async function scanSubmit(e){
+  e.preventDefault();
+  const fm = e.target, fd = Object.fromEntries(new FormData(fm).entries()), k = fm.dataset.scForm;
+  if (k === "codigo"){
+    const c = String(fd.codigo || "").replace(/\D/g, "");
+    if (!eanValido(c)){ toast("Ese número no parece un código de barras. Revisa los dígitos."); return; }
+    pararCamara(); return buscarProducto(c);
+  }
+  let p = scan.prod;
+  if (k === "etiqueta"){
+    const kc = num(fd.kcal);
+    if (!fd.nombre || !fd.nombre.trim() || kc == null){ toast("Pon al menos el nombre y las kcal por 100 g."); return; }
+    p = {nombre: fd.nombre.trim(), marca:"", k:kc, p:num(fd.p)||0, c:num(fd.c)||0, g:num(fd.g)||0, u:"g", racion:null, paquete:null};
+  }
+  const q = num(fd.cant);
+  if (q == null || q <= 0){ toast("Pon cuánto te has comido."); return; }
+  let ref = p.guardado || null;
+  if (!ref && fd.guardar){
+    ref = "ean-" + scan.code;
+    const doc = {nombre: p.marca && !p.nombre.toLowerCase().includes(p.marca.toLowerCase()) ? `${p.nombre} (${p.marca})` : p.nombre,
+      base:100, unidad:p.u, kcal:+(+p.k).toFixed(1), p:+(+p.p).toFixed(1), c:+(+p.c).toFixed(1), g:+(+p.g).toFixed(1), ean:scan.code};
+    const notas = []; if (p.racion) notas.push(`1 ración = ${fmt(p.racion)} ${p.u}`); if (p.paquete) notas.push(`paquete de ${fmt(p.paquete)} ${p.u}`);
+    if (notas.length) doc.nota = notas.join(" · ");
+    if (p.racion) doc.racion = p.racion; if (p.paquete) doc.paquete = p.paquete;
+    S.alimentos = S.alimentos.filter(a => a.id !== ref).concat([Object.assign({id:ref}, doc)]).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    await escribir("alimentos/" + ref, doc);
+  }
+  const f = S.dietaFecha || hoyISO(), r = q / 100;
+  S.ultComida = fd.comida;
+  const d = Object.assign({fecha:f, items:[]}, S.diario[f] || {});
+  const nombre = p.marca && !p.nombre.toLowerCase().includes(p.marca.toLowerCase()) ? `${p.nombre} (${p.marca})` : p.nombre;
+  d.items = (d.items||[]).concat([{id:nuevoId(), comida:fd.comida || comidaPorHora(), nombre, ref, q, u:p.u, cantTxt:`${fmt(q)} ${p.u}`, ...(scan.code ? {ean:scan.code} : {}),
+    kcal:Math.round(p.k*r), p:+(p.p*r).toFixed(1), c:+(p.c*r).toFixed(1), g:+(p.g*r).toFixed(1)}]);
+  cerrarEscaner();
+  await guardarDia(f, d);
+  toast(`${nombre}: ≈ ${fmt(p.k*r)} kcal apuntadas`);
 }
 
 /* ---------- recordatorios en el calendario ---------- */
@@ -1793,6 +2004,7 @@ view.addEventListener("click", async e => {
   }
   // ajustes
   else if (a === "cfgGuardar") guardarCfg();
+  else if (a === "escanear") abrirEscaner();
   else if (a === "aguaSet"){
     const f = b.dataset.f, vaso = Math.max(50, num(obj().vasoMl) || 250), n = +b.dataset.n;
     const llenos = Math.round(((S.diario[f] || {}).agua || 0) / vaso);
