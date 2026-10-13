@@ -183,6 +183,10 @@ details[open] > summary::after{content:"−"}
 /* Comida libre (lo que no está en Mis alimentos) */
 .libre{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px dashed var(--line);border-radius:8px}
 .libre[hidden]{display:none}
+.estim{display:flex;flex-direction:column;gap:6px;padding:10px;border:1px solid var(--line);border-radius:8px;font-size:14px}
+.estim .row{gap:8px;flex-wrap:nowrap;align-items:baseline}
+.estim-tot{border-top:1px solid var(--line);padding-top:6px}
+textarea.tx{resize:vertical;min-height:52px;font:inherit}
 /* Base de la app instalada */
 html{-webkit-text-size-adjust:100%;color-scheme:dark}
 body{margin:0;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
@@ -220,6 +224,7 @@ input.tx,select.tx,textarea.tx{font-size:16px!important}
   </div>
 </nav>
 
+<script src="alimentos-es.js"></script>
 <script>
 (function(){
 "use strict";
@@ -298,6 +303,7 @@ function descansoSeg(t){
 
 /* ---------- almacenamiento en el móvil ---------- */
 const ALIMENTOS_BASE = [{"nombre": "Aceite de oliva", "base": 1, "unidad": "ud", "kcal": 90, "p": 0, "c": 0, "g": 10, "nota": "1 cucharada ≈ 10 ml", "id": "aceite-de-oliva"}, {"nombre": "Alubias (cocidas)", "base": 100, "unidad": "g", "kcal": 110, "p": 7, "c": 17, "g": 0.5, "id": "alubias-cocidas"}, {"nombre": "Arroz blanco (cocido)", "base": 100, "unidad": "g", "kcal": 130, "p": 2.7, "c": 28, "g": 0.3, "id": "arroz-blanco-cocido"}, {"nombre": "Arroz blanco (crudo)", "base": 100, "unidad": "g", "kcal": 355, "p": 7, "c": 79, "g": 0.6, "nota": "Ración típica 70-80 g en crudo", "id": "arroz-blanco-crudo"}, {"nombre": "Atún en aceite (escurrido)", "base": 100, "unidad": "g", "kcal": 190, "p": 26, "c": 0, "g": 9, "id": "atun-en-aceite-escurrido"}, {"nombre": "Atún en lata al natural (escurrido)", "base": 100, "unidad": "g", "kcal": 110, "p": 25, "c": 0, "g": 1, "nota": "Lata pequeña ≈ 56 g escurrido", "id": "atun-en-lata-al-natural-escurrido"}, {"nombre": "Cacahuetes tostados", "base": 100, "unidad": "g", "kcal": 590, "p": 26, "c": 12, "g": 49, "nota": "Un puñado ≈ 30 g", "id": "cacahuetes-tostados"}, {"nombre": "Carne picada mixta (cruda)", "base": 100, "unidad": "g", "kcal": 240, "p": 17, "c": 0, "g": 19, "id": "carne-picada-mixta-cruda"}, {"nombre": "Chocolate negro 70 %", "base": 100, "unidad": "g", "kcal": 580, "p": 8, "c": 35, "g": 42, "id": "chocolate-negro-70"}, {"nombre": "Chorizo", "base": 100, "unidad": "g", "kcal": 450, "p": 22, "c": 2, "g": 39, "id": "chorizo"}, {"nombre": "Claras de huevo", "base": 100, "unidad": "ml", "kcal": 50, "p": 11, "c": 0.7, "g": 0.2, "id": "claras-de-huevo"}, {"nombre": "Cocido de garbanzos (plato)", "base": 100, "unidad": "g", "kcal": 150, "p": 9, "c": 12, "g": 7, "nota": "Plato casero; valor aproximado", "id": "cocido-de-garbanzos-plato"}, {"nombre": "Copos de avena", "base": 100, "unidad": "g", "kcal": 370, "p": 13, "c": 60, "g": 7, "id": "copos-de-avena"}, {"nombre": "Crema de cacahuete", "base": 100, "unidad": "g", "kcal": 600, "p": 25, "c": 15, "g": 50, "id": "crema-de-cacahuete"}, {"nombre": "Ensalada (lechuga y tomate)", "base": 100, "unidad": "g", "kcal": 18, "p": 1, "c": 3, "g": 0.2, "id": "ensalada-lechuga-y-tomate"}, {"nombre": "Galletas María", "base": 1, "unidad": "ud", "kcal": 30, "p": 0.5, "c": 5.5, "g": 0.8, "nota": "1 galleta ≈ 7 g", "id": "galletas-maria"}, {"nombre": "Garbanzos (cocidos)", "base": 100, "unidad": "g", "kcal": 140, "p": 7, "c": 21, "g": 2.5, "id": "garbanzos-cocidos"}, {"nombre": "Huevo", "base": 1, "unidad": "ud", "kcal": 85, "p": 7.5, "c": 0.4, "g": 6, "nota": "1 huevo M ≈ 55 g sin cáscara", "id": "huevo"}, {"nombre": "Jamón serrano", "base": 100, "unidad": "g", "kcal": 240, "p": 31, "c": 0, "g": 13, "id": "jamon-serrano"}, {"nombre": "Leche semidesnatada", "base": 100, "unidad": "ml", "kcal": 46, "p": 3.3, "c": 4.8, "g": 1.6, "nota": "1 vaso ≈ 250 ml", "id": "leche-semidesnatada"}, {"nombre": "Lentejas (cocidas)", "base": 100, "unidad": "g", "kcal": 116, "p": 9, "c": 20, "g": 0.4, "id": "lentejas-cocidas"}, {"nombre": "Lentejas guisadas con chorizo (plato)", "base": 100, "unidad": "g", "kcal": 140, "p": 8, "c": 14, "g": 6, "nota": "Plato casero; valor aproximado", "id": "lentejas-guisadas-con-chorizo-plato"}, {"nombre": "Lomo de cerdo (a la plancha)", "base": 100, "unidad": "g", "kcal": 190, "p": 28, "c": 0, "g": 8.5, "id": "lomo-de-cerdo-a-la-plancha"}, {"nombre": "Manzana", "base": 1, "unidad": "ud", "kcal": 80, "p": 0.4, "c": 19, "g": 0.3, "id": "manzana"}, {"nombre": "Merluza (cocinada)", "base": 100, "unidad": "g", "kcal": 90, "p": 19, "c": 0, "g": 1.3, "id": "merluza-cocinada"}, {"nombre": "Miel", "base": 100, "unidad": "g", "kcal": 304, "p": 0.3, "c": 82, "g": 0, "nota": "1 cucharada ≈ 20 g", "id": "miel"}, {"nombre": "Naranja", "base": 1, "unidad": "ud", "kcal": 65, "p": 1.2, "c": 15, "g": 0.2, "id": "naranja"}, {"nombre": "Nueces", "base": 100, "unidad": "g", "kcal": 650, "p": 15, "c": 7, "g": 65, "nota": "Un puñado ≈ 30 g", "id": "nueces"}, {"nombre": "Pan de barra", "base": 100, "unidad": "g", "kcal": 270, "p": 9, "c": 55, "g": 1.5, "nota": "Barra de 250 g; un trozo ≈ 60 g", "id": "pan-de-barra"}, {"nombre": "Pan integral", "base": 100, "unidad": "g", "kcal": 250, "p": 9, "c": 45, "g": 3.5, "id": "pan-integral"}, {"nombre": "Pasta (cocida)", "base": 100, "unidad": "g", "kcal": 158, "p": 5.8, "c": 31, "g": 0.9, "id": "pasta-cocida"}, {"nombre": "Pasta (cruda)", "base": 100, "unidad": "g", "kcal": 357, "p": 12.5, "c": 72, "g": 1.5, "nota": "Ración típica 80-100 g en crudo", "id": "pasta-cruda"}, {"nombre": "Patata (cocida)", "base": 100, "unidad": "g", "kcal": 80, "p": 2, "c": 17, "g": 0.1, "id": "patata-cocida"}, {"nombre": "Pavo, pechuga (cocinada)", "base": 100, "unidad": "g", "kcal": 150, "p": 29, "c": 0, "g": 3, "id": "pavo-pechuga-cocinada"}, {"nombre": "Pechuga de pavo en lonchas", "base": 100, "unidad": "g", "kcal": 100, "p": 18, "c": 2, "g": 2, "id": "pechuga-de-pavo-en-lonchas"}, {"nombre": "Pechuga de pollo (a la plancha)", "base": 100, "unidad": "g", "kcal": 165, "p": 31, "c": 0, "g": 3.6, "id": "pechuga-de-pollo-a-la-plancha"}, {"nombre": "Plátano", "base": 1, "unidad": "ud", "kcal": 105, "p": 1.3, "c": 24, "g": 0.4, "nota": "Mediano, sin piel", "id": "platano"}, {"nombre": "Proteína en polvo (whey)", "base": 1, "unidad": "ud", "kcal": 120, "p": 24, "c": 2.5, "g": 1.5, "nota": "1 cacito ≈ 30 g; revisa tu etiqueta", "id": "proteina-en-polvo-whey"}, {"nombre": "Queso en lonchas (tranchete)", "base": 1, "unidad": "ud", "kcal": 50, "p": 3, "c": 1.2, "g": 3.8, "nota": "1 loncha ≈ 18 g", "id": "queso-en-lonchas-tranchete"}, {"nombre": "Queso fresco batido 0 %", "base": 100, "unidad": "g", "kcal": 46, "p": 8, "c": 3.5, "g": 0.1, "id": "queso-fresco-batido-0"}, {"nombre": "Salmón (cocinado)", "base": 100, "unidad": "g", "kcal": 210, "p": 22, "c": 0, "g": 13, "id": "salmon-cocinado"}, {"nombre": "Sardinas en aceite (escurridas)", "base": 100, "unidad": "g", "kcal": 210, "p": 24, "c": 0, "g": 13, "id": "sardinas-en-aceite-escurridas"}, {"nombre": "Ternera magra (cocinada)", "base": 100, "unidad": "g", "kcal": 190, "p": 29, "c": 0, "g": 8, "id": "ternera-magra-cocinada"}, {"nombre": "Tortilla de patatas", "base": 100, "unidad": "g", "kcal": 190, "p": 6.5, "c": 14, "g": 12, "nota": "Casera; una ración ≈ 150 g", "id": "tortilla-de-patatas"}, {"nombre": "Verduras variadas (cocidas)", "base": 100, "unidad": "g", "kcal": 30, "p": 2, "c": 5, "g": 0.2, "id": "verduras-variadas-cocidas"}, {"nombre": "Yogur natural", "base": 1, "unidad": "ud", "kcal": 75, "p": 4.4, "c": 5.6, "g": 4, "nota": "1 ud = 125 g", "id": "yogur-natural"}];
+const BASE_IDS = new Set(ALIMENTOS_BASE.map(a => a.id));
 const IDB_NOMBRE = "fitall", IDB_ALMACEN = "docs";
 let idb = null;
 function abrirIDB(){
@@ -808,7 +814,6 @@ function vDieta(){
   const f = S.dietaFecha; const o = obj(); const t = totalesDia(f);
   const d = S.diario[f] || {items:[]};
   const items = d.items || [];
-  const lista = S.alimentos.map(a => `<option value="${esc(a.nombre)}"></option>`).join("");
   const sinKcal = items.filter(i => i.kcal == null).length;
   const grupos = comidas().concat([...new Set(items.map(i => i.comida))].filter(c => !comidas().includes(c)));
   const porComida = grupos.map(c => {
@@ -831,15 +836,11 @@ function vDieta(){
     <section class="card sec">
       <span class="eyebrow">Apuntar lo que has comido</span>
       <form class="sec" data-form="addItem">
-        <label class="lb">Qué has comido<input class="tx" id="al-nombre" name="nombre" list="al-lista" placeholder="Lo que sea: macarrones, filete, croquetas…" autocomplete="off"></label>
-        <datalist id="al-lista">${lista}</datalist>
-        <div class="grid2">
-          <label class="lb">Cantidad<span class="fld"><input id="al-cant" name="cant" inputmode="text" placeholder="1 plato, 2 filetes…"><span id="al-ud"></span></span></label>
-          <label class="lb">Comida<select class="tx" id="al-comida" name="comida">${optsL(comidas(), S.ultComida && comidas().includes(S.ultComida) ? S.ultComida : comidaPorHora())}</select></label>
-        </div>
-        <div class="muted small" id="al-prev">Escribe cualquier cosa. Si está en «Mis alimentos», las calorías se calculan solas.</div>
+        <label class="lb">Escríbelo como lo dirías<textarea class="tx" id="al-nombre" name="nombre" rows="2" placeholder="Ej.: un plato de lentejas con chorizo, un trozo de pan y una manzana"></textarea></label>
+        <label class="lb">Comida<select class="tx" id="al-comida" name="comida">${optsL(comidas(), S.ultComida && comidas().includes(S.ultComida) ? S.ultComida : comidaPorHora())}</select></label>
+        <div id="al-prev" class="muted small">Pon cuánto si lo sabes («dos huevos», «medio plato», «200 g de pollo»). Si no, cuento una ración normal.</div>
         <div class="libre" id="al-libre" hidden>
-          <span class="small">No está en «Mis alimentos». Pon las calorías de lo que te has comido si las sabes. Si no, apúntalo igual y las añades luego.</span>
+          <span class="small">No lo encuentro. Escríbelo de otra forma (por ejemplo, «pollo» en vez de la marca) o pon tú las calorías si las sabes:</span>
           <div class="grid4">
             <label class="lb">kcal<input class="tx" id="al-kcal" name="kcal" inputmode="decimal" placeholder="?"></label>
             <label class="lb">Proteína<input class="tx" id="al-p" name="p" inputmode="decimal" placeholder="g"></label>
@@ -879,25 +880,22 @@ function vDieta(){
   </div>`;
 }
 function alimentoPorNombre(n){ n = String(n||"").trim().toLowerCase(); return S.alimentos.find(a => a.nombre.toLowerCase() === n); }
+const AYUDA_PREV = "Pon cuánto si lo sabes («dos huevos», «medio plato», «200 g de pollo»). Si no, cuento una ración normal.";
 function actualizarPrevia(){
-  const nombre = ($("#al-nombre")?.value || "").trim();
-  const a = alimentoPorNombre(nombre);
-  const ud = $("#al-ud"), prev = $("#al-prev"), cant = $("#al-cant"), libre = $("#al-libre");
-  if (!ud) return;
-  if (!a){
-    ud.textContent = ""; cant.inputMode = "text"; cant.placeholder = "1 plato, 2 filetes…";
-    libre.hidden = !nombre;
-    prev.textContent = nombre ? "" : "Escribe cualquier cosa. Si está en «Mis alimentos», las calorías se calculan solas.";
-    prev.hidden = !!nombre;
-    return;
-  }
-  libre.hidden = true; prev.hidden = false;
-  ud.textContent = a.unidad === "ud" ? "ud" : a.unidad;
-  cant.inputMode = "decimal";
-  cant.placeholder = a.unidad === "ud" ? "1" : "100";
-  const q = num(cant.value) ?? (a.unidad==="ud"?1:100);
-  const k = q / (a.base||100);
-  prev.textContent = `${fmt(a.kcal*k)} kcal · P ${fmt(a.p*k)} g · H ${fmt(a.c*k)} g · G ${fmt(a.g*k)} g${a.nota?` · ${a.nota}`:""}`;
+  const prev = $("#al-prev"), libre = $("#al-libre"), inp = $("#al-nombre");
+  if (!prev || !inp) return;
+  const txt = inp.value.trim();
+  if (!txt){ prev.className = "muted small"; prev.textContent = AYUDA_PREV; libre.hidden = true; return; }
+  const r = estimarComida(txt);
+  libre.hidden = r.partes.length > 0;
+  if (!r.partes.length){ prev.className = "muted small"; prev.textContent = ""; return; }
+  const t = r.total;
+  prev.className = "estim";
+  prev.innerHTML = `<span class="eyebrow">Lo que he entendido</span>
+    ${r.partes.map(x => `<div class="row between"><span>${esc(x.cant ? x.cant + " · " : "")}<b>${esc(x.nombre)}</b>${x.gramos!=null ? ` <span class="muted">(${fmt(x.gramos)} ${esc(x.u)})</span>` : ""}</span><span class="muted">${fmt(x.kcal)} kcal</span></div>`).join("")}
+    <div class="row between estim-tot"><b>Total ≈ ${fmt(t.kcal)} kcal</b><span class="muted small">P ${fmt(t.p)} g · H ${fmt(t.c)} g · G ${fmt(t.g)} g</span></div>
+    ${r.noEntiendo.length ? `<div class="hint">No he entendido: «${esc(r.noEntiendo.join("», «"))}». No cuenta en el total. Prueba a escribirlo de otra forma.</div>` : ""}
+    <span class="muted small">Es una estimación con raciones normales de casa. Si ha sido más o menos, dilo («plato grande», «medio plato»).</span>`;
 }
 function guardarDia(f, d){
   S.diario[f] = d;
@@ -1124,6 +1122,170 @@ function tipoComida(n){
 }
 const hashTxt = s => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 function entrenaHoy(fecha){ return sesionesDeDia(fecha).filter(s => !/recuperaci|opcional/i.test((s.tipo||"") + " " + (s.nombre||""))); }
+
+/* ---------- calcular lo que escribes ("un plato de lentejas y un trozo de pan") ---------- */
+const normTxt = t => String(t||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .replace(/(\d),(\d)/g, "$1.$2").replace(/[,;+]|\.(?!\d)/g, " y ").replace(/[^a-z0-9.\/ ]+/g, " ").replace(/\s+/g, " ").trim();
+const PORC_DEF = {plato:250, cazo:200, racion:150, taza:200, tazon:300, vaso:200, bol:250, tapa:100, trozo:60, raja:250, ud:100, pieza:30,
+  pechuga:150, filete:120, muslo:110, cuarto:250, chuleta:120, rodaja:20, loncha:15, taco:10, cucharada:10, cucharadita:4, punado:30,
+  lata:70, bolsa:40, onza:10, tableta:100, copa:150, cana:200, tercio:330, botellin:200, quinto:200, jarra:500, botella:500, brick:200,
+  chorreon:10, chorrito:5, sobre:8, cacito:30, scoop:30, porcion:110, pincho:100, bola:60, barra:250, rebanada:30, guarnicion:100,
+  bandeja:300, tarrina:100, cazuela:150, racimo:150, chupito:40, tostada:50};
+const PORC_SIN = {cuchara:"cucharada", cucharon:"cazo", cuenco:"bol", unidad:"ud", uds:"ud", pedazo:"trozo", cacho:"trozo", tajada:"trozo",
+  lonja:"loncha", paquete:"bolsa", paquetito:"bolsa", plat:"plato", lonchita:"loncha", trocito:"trozo", vasito:"vaso", platito:"plato", platazo:"plato"};
+const NUMS = {un:1, una:1, uno:1, dos:2, tres:3, cuatro:4, cinco:5, seis:6, siete:7, ocho:8, nueve:9, diez:10, once:11, doce:12, quince:15, veinte:20, medio:0.5, media:0.5};
+const GRANDE = new Set(["grande","grandes","gordo","gorda","colmado","colmada","lleno","llena","buen","buena","enorme","platazo"]);
+const PEQUE = new Set(["pequeno","pequena","pequenos","pequenas","chico","chica","poco","poca","pocos","pocas","platito","trocito","vasito","mini"]);
+const VACIAS = new Set(("de del la el los las lo al a en para por con sin y e o u un una unos unas uno mi mis su sus tu me se le que he ha hemos " +
+  "comido comida comi cene cenado desayune desayunado almorce almorzado merende merendado tome tomado bebi bebido pique picado " +
+  "hoy ayer noche manana mediodia tarde casa fuera restaurante bar trabajo gimnasio despues antes entreno entrenar postre segundo primero primer " +
+  "otro otra otros otras mas menos solo sola algo bastante tipo como aprox aproximadamente casi entero entera enteros enteras normal mediano mediana " +
+  "hasta arriba bien madre padre abuela abuelo suegra novia casero casera caseros caseras hecho hecha hechos hechas acompanado acompanada junto encima " +
+  "frito frita fritos fritas asado asada asados asadas plancha horno vapor salteado salteada cocinado cocinada g gr grs gramos ml kg par mucho mucha muchos muchas tambien luego").split(" "));
+const SEPARA = w => w === "y" || w === "con" || w === "e";
+const CONTABLES = new Set(["ud","filete","trozo","chuleta","loncha","rebanada","muslo","pechuga","rodaja","pieza"]);
+const ud1 = w => PORC_SIN[w] || (PORC_DEF[w] ? w : (w.endsWith("es") && PORC_DEF[w.slice(0,-2)]) ? w.slice(0,-2) : (w.endsWith("s") && PORC_DEF[w.slice(0,-1)]) ? w.slice(0,-1) : (PORC_SIN[w.replace(/e?s$/,"")] || null));
+let CAT = null, CAT_KEY = "";
+function catalogo(){
+  const propios = S.alimentos.filter(a => !BASE_IDS.has(a.id));
+  const key = propios.map(a => a.id + a.kcal + a.p + a.base + a.unidad).join("|");
+  if (CAT && key === CAT_KEY) return CAT;
+  const ents = [];
+  // Primero tus alimentos (mandan sobre los de la app si se llaman igual)
+  propios.forEach(a => {
+    const nombre = a.nombre.replace(/\(.*?\)/g, "").trim();
+    const porUd = a.unidad === "ud", f = porUd ? 1 : 100 / (a.base || 100);
+    ents.push({n:a.nombre, al:[normTxt(nombre), normTxt(a.nombre)], k:a.kcal*f, p:a.p*f, c:a.c*f, g:a.g*f, porUd, u:porUd?"ud":a.unidad,
+      por: porUd ? {ud:1} : {racion:100}, def: porUd ? "ud" : "racion", prio:0});
+  });
+  (window.FITALL_CATALOGO || []).forEach(([n, al, k, p, c, g, por]) => {
+    const pr = {}; por.split(",").forEach(x => { const [a, b] = x.split(":"); pr[a] = +b; });
+    ents.push({n, al: al.split("|").map(normTxt), k, p, c, g, porUd:false, u: /^(cerveza|vino|cubata|refresco|bebida|zumo|leche|agua|cafe|batido de choc)/i.test(normTxt(n)) ? "ml" : "g",
+      por: pr, def: por.split(",")[0].split(":")[0], prio:1, pan: /^Bocadillo \(/.test(n) ? 1 : /^Montadito \(/.test(n) ? 0.4 : 0});
+  });
+  const alias = [];
+  ents.forEach((e, ei) => e.al.forEach(a => { if (a) alias.push({ei, t:a.split(" "), len:a.length}); }));
+  CAT = {ents, alias}; CAT_KEY = key; return CAT;
+}
+const tokIgual = (tok, a) => tok === a || (a.length > 2 && (tok === a + "s" || tok === a + "es" || (a.endsWith("z") && tok === a.slice(0,-1) + "ces")));
+const RAC_TXT = {punado:["puñado","puñados"], racion:["ración","raciones"], cana:["caña","cañas"], botellin:["botellín","botellines"], tazon:["tazón","tazones"],
+  guarnicion:["guarnición","guarniciones"], porcion:["porción","porciones"], bol:["bol","boles"], ud:["",""], cucharadita:["cucharadita","cucharaditas"],
+  chorreon:["chorreón","chorreones"], cuna:["cuña","cuñas"], cacito:["cacito","cacitos"], scoop:["cacito","cacitos"], tapa:["tapa","tapas"]};
+function nombreRacion(n, por){
+  const t = RAC_TXT[por] || [por, /[aeiou]$/.test(por) ? por + "s" : por + "es"];
+  const num = n === 0.5 ? "½" : fmt(n, 2);
+  return `${num} ${n > 1 ? t[1] : t[0]}`.trim();
+}
+function leerCantidad(toks){
+  // toks: palabras entre el alimento anterior y este. Devuelve {n, porcion, gramos, mult}
+  const r = {n:null, porcion:null, gramos:null, mult:1, varios:false};
+  for (let i = toks.length - 1; i >= 0; i--){
+    const w = toks[i];
+    if (w === "y" || w === "con" || w === "e") break;
+    if (["unos","unas","varios","varias","algunos","algunas"].includes(w)){ r.varios = true; continue; }
+    const mg = w.match(/^(\d+(?:\.\d+)?)(g|gr|grs|gramos|ml|kg)$/);
+    if (mg && r.gramos == null){ r.gramos = +mg[1] * (mg[2] === "kg" ? 1000 : 1); continue; }
+    if (/^(g|gr|grs|gramos|ml|kg)$/.test(w) && i > 0 && /^\d+(\.\d+)?$/.test(toks[i-1]) && r.gramos == null){ r.gramos = +toks[i-1] * (w === "kg" ? 1000 : 1); i--; continue; }
+    if (r.n == null && /^\d+(\.\d+)?$/.test(w)){ r.n = +w; continue; }
+    if (r.n == null && /^\d+\/\d+$/.test(w)){ const [a, b] = w.split("/").map(Number); if (b) r.n = a / b; continue; }
+    if (w === "par" && r.n == null){ r.n = 2; if (toks[i-1] === "un") i--; continue; }
+    if (NUMS[w] != null){
+      if (r.n == null) r.n = NUMS[w];
+      else if (w === "medio" || w === "media") r.n += 0.5;  // "dos y medio"
+      continue;
+    }
+    if (GRANDE.has(w)) r.mult = 1.3;
+    else if (PEQUE.has(w)) r.mult = 0.7;
+    if (w === "arriba" && toks[i-1] === "hasta") r.mult = 1.3;
+    const pw = ud1(w); if (pw && !r.porcion) r.porcion = pw;
+  }
+  return r;
+}
+function estimarComida(texto){
+  const toks = normTxt(texto).split(" ").filter(Boolean);
+  const out = {partes:[], noEntiendo:[], total:{kcal:0, p:0, c:0, g:0}};
+  if (!toks.length) return out;
+  const {ents, alias} = catalogo();
+  const cands = [];
+  for (let i = 0; i < toks.length; i++)
+    for (const a of alias){
+      if (i + a.t.length > toks.length) continue;
+      let ok = true;
+      for (let j = 0; j < a.t.length && ok; j++) ok = tokIgual(toks[i+j], a.t[j]);
+      if (ok) cands.push({i, n:a.t.length, len:a.len, ei:a.ei, prio:ents[a.ei].prio, ai:alias.indexOf(a)});
+    }
+  cands.sort((x, y) => y.n - x.n || y.len - x.len || x.prio - y.prio || x.ei - y.ei || x.i - y.i);
+  const usado = new Array(toks.length).fill(false), elegidos = [];
+  for (const c of cands){
+    let libre = true; for (let j = c.i; j < c.i + c.n; j++) if (usado[j]) libre = false;
+    if (!libre) continue;
+    for (let j = c.i; j < c.i + c.n; j++) usado[j] = true;
+    elegidos.push(c);
+  }
+  elegidos.sort((x, y) => x.i - y.i);
+  // "un tercio de cerveza", "una copa de ron": dos trozos del mismo alimento seguidos son uno solo
+  const juntos = [];
+  for (const c of elegidos){
+    const prev = juntos[juntos.length - 1];
+    if (prev && prev.ei === c.ei && toks.slice(prev.i + prev.n, c.i).every(w => w === "de" || w === "del" || w === "la")){
+      prev.n = c.i + c.n - prev.i; continue;
+    }
+    juntos.push(Object.assign({}, c));
+  }
+  let fin = 0, pan = null;
+  juntos.forEach(c => {
+    const e = ents[c.ei];
+    const prefijo = toks.slice(fin, c.i);
+    const q = leerCantidad(prefijo);
+    // La cantidad detrás ("pollo 200 g", "pizza dos trozos"), hasta el siguiente "y"/"con"
+    if (q.n == null && q.porcion == null && q.gramos == null){
+      const tras = [];
+      for (let j = c.i + c.n; j < toks.length && !SEPARA(toks[j]) && !usado[j]; j++) tras.push(toks[j]);
+      if (tras.length){ const q2 = leerCantidad(tras); if (q2.n != null || q2.porcion || q2.gramos != null) Object.assign(q, q2); }
+    }
+    // "filetes", "chuletas" sin número: más de uno
+    const enPlural = toks.slice(c.i, c.i + c.n).some((w, j) => { const a = alias[c.ai].t[j]; return a && w !== a && w.length > a.length; });
+    // La propia forma de decirlo puede llevar la ración: "una caña", "vaso de leche", "lata de atún"
+    let porcion = q.porcion && (e.por[q.porcion] || PORC_DEF[q.porcion]) ? q.porcion : null;
+    let pluralAlias = false;
+    if (!porcion) for (const w of toks.slice(c.i, c.i + c.n)){ const pw = ud1(w); if (pw && e.por[pw]) { porcion = pw; pluralAlias = w !== pw && /s$/.test(w); break; } }
+    let n = q.n == null ? 1 : q.n, gramos, txtCant;
+    const explicito = q.n != null || q.porcion || q.gramos != null;
+    if (e.porUd){
+      n = q.n == null ? 1 : q.n; gramos = n;
+      txtCant = `${fmt(n,2)} ud`;
+    } else if (q.gramos != null){
+      gramos = q.gramos; txtCant = `${fmt(gramos)} ${e.u}`;
+    } else if (!explicito && pan && e.por.bocadillo){
+      gramos = e.por.bocadillo * pan.f * pan.n; txtCant = "en el bocadillo";
+    } else {
+      let por = porcion || e.def;
+      if (q.n == null && !q.porcion){
+        if (q.varios && e.por.racion){ por = "racion"; }
+        else if ((q.varios || enPlural || pluralAlias) && CONTABLES.has(por)){ n = q.varios || (por === "chuleta" && e.por.chuleta < 60) ? 3 : 2; }
+      }
+      const g1 = e.por[por] || PORC_DEF[por] || 100;
+      gramos = g1 * n * q.mult;
+      txtCant = nombreRacion(n, por);
+      if (q.mult > 1) txtCant += " grande"; else if (q.mult < 1) txtCant += " pequeño";
+    }
+    if (e.pan) pan = {f:e.pan, n};
+    const f = e.porUd ? gramos : gramos / 100;
+    const parte = {nombre:e.n, cant:txtCant, gramos: e.porUd ? null : Math.round(gramos), u:e.u, kcal:e.k*f, p:e.p*f, c:e.c*f, g:e.g*f};
+    out.partes.push(parte);
+    ["kcal","p","c","g"].forEach(k => out.total[k] += parte[k]);
+    fin = c.i + c.n;
+  });
+  // Palabras que no se han entendido
+  let trozo = [];
+  const cerrar = () => { if (trozo.length) out.noEntiendo.push(trozo.join(" ")); trozo = []; };
+  toks.forEach((w, i) => {
+    const ignorar = usado[i] || VACIAS.has(w) || NUMS[w] != null || ud1(w) || GRANDE.has(w) || PEQUE.has(w) || /^\d/.test(w) || w.length < 3;
+    if (ignorar) cerrar(); else trozo.push(w);
+  });
+  cerrar();
+  return out;
+}
 
 /* ---------- recordatorios en el calendario ---------- */
 const REC_DEF = {semanas:2, pesarOn:true, pesar:"08:00", pesarDias:[1,3,5], comidasOn:true,
@@ -1498,7 +1660,7 @@ view.addEventListener("input", e => {
     else ex[t.dataset.in] = t.value;
     guardarBorrador();
   }
-  if (t.id === "al-nombre" || t.id === "al-cant") actualizarPrevia();
+  if (t.id === "al-nombre") actualizarPrevia();
   if (t.id === "it-cant") reescalarItem();
   if (t.dataset.inEd === "fecha" && S.ed) { if (t.value) { S.ed.fecha = t.value; guardarBorrador(); } }
   // ajustes
@@ -1707,25 +1869,29 @@ view.addEventListener("submit", async e => {
     toast(editando ? "Medida actualizada" : "Medida guardada");
   }
   else if (k === "addItem"){
-    const nombre = (fd.nombre || "").trim();
-    if (!nombre){ toast("Escribe qué has comido."); return; }
+    const texto = (fd.nombre || "").trim().replace(/\s+/g, " ");
+    if (!texto){ toast("Escribe qué has comido."); return; }
     S.ultComida = fd.comida;
-    const al = alimentoPorNombre(nombre);
-    const cantTxt = (fd.cant || "").trim();
     const f = S.dietaFecha; const d = Object.assign({fecha:f, items:[]}, S.diario[f] || {});
-    if (al && (!cantTxt || /^\d+([.,]\d+)?$/.test(cantTxt))){
-      const q = num(cantTxt) ?? (al.unidad==="ud"?1:100);
-      const r = q / (al.base||100);
-      d.items = (d.items||[]).concat([{id:nuevoId(), comida:fd.comida, nombre:al.nombre, ref:al.id, q, u:al.unidad, cantTxt: al.unidad==="ud" ? `${fmt(q,2)} ud` : `${fmt(q)} ${al.unidad}`,
-        kcal:Math.round(al.kcal*r), p:+(al.p*r).toFixed(1), c:+(al.c*r).toFixed(1), g:+(al.g*r).toFixed(1)}]);
-      await guardarDia(f, d); toast(`${al.nombre} apuntado`); return;
+    const nombre = texto.charAt(0).toUpperCase() + texto.slice(1);
+    const r = estimarComida(texto);
+    if (r.partes.length){
+      const t = r.total;
+      const cantTxt = r.partes.map(x => `${x.cant && x.cant !== "en el bocadillo" ? x.cant + " " : ""}${x.nombre.toLowerCase()}${x.gramos!=null ? ` (${fmt(x.gramos)} ${x.u})` : ""}`).join(" + ")
+        + (r.noEntiendo.length ? ` · sin contar: ${r.noEntiendo.join(", ")}` : "");
+      d.items = (d.items||[]).concat([{id:nuevoId(), comida:fd.comida || comidaPorHora(), nombre, cantTxt, est:true,
+        partes: r.partes.map(x => ({n:x.nombre, cant:x.cant, gramos:x.gramos, kcal:Math.round(x.kcal)})),
+        kcal:Math.round(t.kcal), p:+t.p.toFixed(1), c:+t.c.toFixed(1), g:+t.g.toFixed(1)}]);
+      await guardarDia(f, d);
+      toast(r.noEntiendo.length ? `Apuntado (≈ ${fmt(t.kcal)} kcal). Ojo: «${r.noEntiendo[0]}» no está contado.` : `Apuntado: ≈ ${fmt(t.kcal)} kcal`);
+      return;
     }
     const kc = num(fd.kcal);
     if (fd.kcal && fd.kcal.trim() && kc == null){ toast("Las kcal tienen que ser un número (o déjalas vacías)."); return; }
-    d.items = (d.items||[]).concat([{id:nuevoId(), comida:fd.comida || comidaPorHora(), nombre, cantTxt,
+    d.items = (d.items||[]).concat([{id:nuevoId(), comida:fd.comida || comidaPorHora(), nombre, cantTxt:"",
       kcal: kc == null ? null : Math.round(kc), p:num(fd.p)||0, c:num(fd.c)||0, g:num(fd.g)||0}]);
     await guardarDia(f, d);
-    toast(kc == null ? `${nombre} apuntado. Ponle las calorías cuando las sepas.` : `${nombre} apuntado`);
+    toast(kc == null ? "Apuntado sin calorías. Tócalo cuando quieras ponérselas." : "Apuntado");
   }
   else if (k === "editItem"){
     const f = S.dietaFecha; const d = Object.assign({}, S.diario[f] || {items:[]});

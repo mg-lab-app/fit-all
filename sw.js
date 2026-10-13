@@ -1,6 +1,6 @@
 // FIT-ALL: funciona sin conexión. Cambia VERSION al publicar una versión nueva.
-const VERSION = "fitall-v8";
-const BASE = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png", "./icons/favicon.png"];
+const VERSION = "fitall-v9";
+const BASE = ["./", "./index.html", "./manifest.webmanifest", "./alimentos-es.js", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png", "./icons/favicon.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(BASE)));
