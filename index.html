@@ -428,6 +428,7 @@ function escribirVarios(ops, vaciar){
 }
 const colas = {};
 function escribir(path, data){
+  marcarSync([path]);
   const p = (colas[path] || Promise.resolve()).then(() => escribirVarios([[path, data]])).catch(errGuardar);
   colas[path] = p; return p;
 }
@@ -464,8 +465,11 @@ async function init(){
     }
   } catch(e){ S.sinDb = true; }
   repartir(docs);
+  const cod = leerCodigo(location.hash);
+  if (cod){ S.enlacePend = cod; S.tab = "ajustes"; try { history.replaceState(null, "", location.pathname); } catch(e) {} }
   render();
   setTimeout(() => enviarHoja(), 1500);
+  setTimeout(() => sincronizar(), 600);
 }
 
 /* ---------- copia de seguridad ---------- */
@@ -492,7 +496,9 @@ async function aplicarCopia(d){
   (d.ejerciciosPropios||[]).forEach(x => { const {id, propio, ...r} = x; ops.push(["ejercicios/" + (id || "p-" + slug(x.n)), r]); });
   const al = (d.alimentos && d.alimentos.length) ? d.alimentos : ALIMENTOS_BASE;
   al.forEach(x => { const {id, ...r} = x; ops.push(["alimentos/" + (id || slug(x.nombre) || nuevoId()), r]); });
+  const antes = syncOn() ? (await leerTodo()).map(x => x.path) : [];
   try { await escribirVarios(ops, true); } catch(e){ errGuardar(); return; }
+  marcarSync([...new Set(ops.map(o => o[0]).concat(antes))]);
   repartir(await leerTodo());
   S.importPend = null; S.cfgEd = null; S.cfgDirty = false; S.rutEd = null; S.ed = null; S.entEd = null;
   S.tab = "hoy"; render(); window.scrollTo(0,0);
@@ -1148,6 +1154,7 @@ function vAjustes(){
       <button class="iconbtn" data-act="cfgMove" data-l="comidas" data-i="${i}" data-d="-1" aria-label="Subir" ${i===0?"disabled":""}>↑</button>
       ${o.comidas.length>1?`<button class="iconbtn" data-act="cfgDel" data-l="comidas" data-i="${i}" aria-label="Quitar ${esc(c)}">✕</button>`:""}</div>`).join("");
   return `<div class="stack">
+    ${enlaceHTML()}
     ${confirmImp}
     <section class="card sec">
       <span class="eyebrow">Objetivos diarios</span>
@@ -1196,6 +1203,7 @@ function vAjustes(){
     <div class="row between"><span class="pill ${S.cfgDirty?"warn":"ok"}" id="cfg-estado">${S.cfgDirty?"Cambios sin guardar":"Todo guardado"}</span>
       <div class="row"><button class="btn ghost sm" data-act="cfgReset">Deshacer</button><button class="btn pri" data-act="cfgGuardar">Guardar ajustes</button></div></div>
     ${vRutina()}
+    ${movilesHTML()}
     ${hojaHTML()}
     <section class="card sec" id="datos">
       <span class="eyebrow">Tus datos</span>
@@ -1855,7 +1863,7 @@ function hojaHTML(){
       <div class="row"><button class="btn sm" data-act="hojaCopiar" ${codigoHoja ? "" : "disabled"}>Copiar el código</button></div>
       <textarea class="tx small" id="hoja-codigo" readonly rows="5" style="font-family:ui-monospace,Menlo,monospace;font-size:12px!important">${esc(codigoHoja || "Cargando el código…")}</textarea>
     </details>
-    <details><summary class="small">Cambiar de móvil</summary><p class="small muted" style="max-width:62ch">Por seguridad, la hoja solo acepta datos del móvil que la conectó. Si cambias de móvil, en Apps Script ve a <b>Configuración del proyecto → Propiedades del script</b>, borra «CLAVE_FITALL» y conecta desde el móvil nuevo.</p></details>
+    <details><summary class="small">Otro móvil</summary><p class="small muted" style="max-width:62ch">Por seguridad, la hoja solo acepta datos de tus móviles. Para añadir otro, usa «Conectar otro móvil» en «Tus móviles».</p></details>
   </section>`;
 }
 
@@ -2548,6 +2556,140 @@ function pasosHTML(f){
   </section>`;
 }
 
+/* ---------- sincronización entre móviles (a través de tu hoja de Google) ---------- */
+const SY = {corriendo:false, otra:false};
+const syncCfg = () => lsGet("fitall_sync") || {};
+const syncOn = () => !!syncCfg().on;
+const syncUrl = () => syncCfg().url || hojaUrl();
+const pendSync = () => lsGet("fitall_sync_pend") || {};
+const setSync = o => lsSet("fitall_sync", Object.assign(syncCfg(), o));
+function marcarSync(paths){
+  if (!syncOn()) return;
+  const p = pendSync(), t = Date.now();
+  paths.forEach(x => { p[x] = t; });
+  lsSet("fitall_sync_pend", p);
+  clearTimeout(marcarSync.t); marcarSync.t = setTimeout(() => sincronizar(), 2500);
+}
+const postSync = async (url, cuerpo) => {
+  const r = await fetch(url, {method:"POST", body:JSON.stringify(cuerpo), headers:{"Content-Type":"text/plain;charset=utf-8"}});
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error === "clave" ? "clave" : (j.error || "error"));
+  if (j.seq == null) throw new Error("antiguo");
+  return j;
+};
+const errSyncTxt = m => m === "clave" ? "Tu hoja no reconoce este móvil. Vuelve a conectarlo con el código de tu otro móvil."
+  : m === "antiguo" ? "Tu hoja tiene el código antiguo. Actualízalo (mira «Tus móviles» en Ajustes)."
+  : "No pude sincronizar. Lo reintento sola cuando haya conexión.";
+async function sincronizar(manual){
+  const url = syncUrl();
+  if (!syncOn() || !url) return;
+  if (SY.corriendo){ SY.otra = true; return; }
+  if (!navigator.onLine){ if (manual) toast("Sin conexión: lo sincronizo cuando vuelva."); return; }
+  SY.corriendo = true;
+  try {
+    const pend = pendSync();
+    const mapa = new Map((await leerTodo()).map(d => [d.path, d.data]));
+    const cambios = Object.entries(pend).map(([path, t]) => ({path, t, data: mapa.has(path) ? mapa.get(path) : null}));
+    const j = await postSync(url, {clave:claveHoja(), accion:"sync", desde:syncCfg().seq || 0, cambios});
+    const ahora = pendSync();
+    cambios.forEach(c => { if (ahora[c.path] === c.t) delete ahora[c.path]; });
+    lsSet("fitall_sync_pend", ahora);
+    const enviados = new Map(cambios.map(c => [c.path, c.t]));
+    const ops = [];
+    (j.docs || []).forEach(d => {
+      if (enviados.get(d.path) === d.t) return;              // es lo que acabo de subir yo
+      if (ahora[d.path] && ahora[d.path] >= d.t) return;     // aquí hay un cambio más nuevo sin subir
+      ops.push([d.path, d.data]);
+    });
+    if (ops.length){ await escribirVarios(ops); repartir(await leerTodo()); pedirRender(); }
+    setSync({seq:j.seq, ok:new Date().toISOString(), err:null});
+    if (manual) toast(ops.length ? `Sincronizado: ${ops.length} cambio${ops.length > 1 ? "s" : ""} de tu otro móvil.` : "Todo al día en tus móviles.");
+    else if (ops.length) toast("Datos actualizados desde tu otro móvil");
+    if (S.tab === "ajustes") pedirRender();
+  } catch(e){
+    setSync({err:String(e && e.message || e), errCuando:new Date().toISOString()});
+    if (manual) toast(errSyncTxt(String(e && e.message)));
+    if (S.tab === "ajustes") pedirRender();
+  } finally {
+    SY.corriendo = false;
+    if (SY.otra){ SY.otra = false; setTimeout(() => sincronizar(), 400); }
+  }
+}
+// Primer móvil: sube todo lo que tiene.
+async function activarSync(){
+  if (!hojaUrl()){ toast("Primero conecta tu hoja de Google (justo debajo)."); return; }
+  setSync({on:true, url:hojaUrl(), seq:0, err:null});
+  marcarSync((await leerTodo()).map(d => d.path));
+  clearTimeout(marcarSync.t);
+  render(); toast("Subiendo tus datos…");
+  await sincronizar(true);
+}
+// Código para el otro móvil: un enlace con la dirección de tu hoja y la clave de este móvil.
+const b64url = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const deB64url = s => decodeURIComponent(escape(atob(s.replace(/-/g, "+").replace(/_/g, "/"))));
+const enlaceMovil = () => `${location.origin}${location.pathname}#enlazar=${b64url(JSON.stringify({u:syncUrl(), k:claveHoja()}))}`;
+function leerCodigo(txt){
+  const m = String(txt || "").match(/enlazar=([A-Za-z0-9_-]+)/) || String(txt || "").trim().match(/^([A-Za-z0-9_-]{20,})$/);
+  if (!m) return null;
+  try { const c = JSON.parse(deB64url(m[1])); return c && /^https:\/\/script\.google(usercontent)?\.com\//.test(c.u) && c.k ? c : null; } catch(e){ return null; }
+}
+async function enlazar(c){
+  if (!navigator.onLine){ toast("Necesitas conexión a internet para conectar los móviles."); return; }
+  toast("Conectando con tu otro móvil…");
+  try {
+    const j = await postSync(c.u, {clave:c.k, accion:"sync", desde:0, cambios:[]});
+    const ops = (j.docs || []).filter(d => d.data != null).map(d => [d.path, d.data]);
+    if (!ops.length){ toast("Tu otro móvil aún no ha subido sus datos. En él, ve a Ajustes → Tus móviles → «Activar en este móvil»."); return; }
+    lsSet("fitall_clave", c.k);
+    lsSet("fitall_sync_pend", {});
+    lsSet("fitall_sync", {on:true, url:c.u, seq:j.seq, ok:new Date().toISOString()});
+    await escribirVarios(ops, true);
+    repartir(await leerTodo());
+    S.enlacePend = null; S.cfgEd = null; S.cfgDirty = false; S.rutEd = null; S.ed = null; S.entEd = null;
+    S.tab = "hoy"; render(); window.scrollTo(0,0);
+    toast(`¡Conectado! Ya tienes aquí todo lo de tu otro móvil.`);
+  } catch(e){ toast(errSyncTxt(String(e && e.message))); }
+}
+function enlaceHTML(){
+  if (!S.enlacePend) return "";
+  return `<section class="card sec" style="border-color:var(--accent)">
+    <h3>¿Conectar este móvil con tu otro móvil?</h3>
+    <span class="small">A partir de ahora, lo que apuntes en uno saldrá también en el otro. Lo que haya ahora en este móvil se sustituye por lo de tu otro móvil.</span>
+    <div class="row"><button class="btn ghost" data-act="enlaceNo">Cancelar</button><button class="btn pri" data-act="enlaceSi">Conectar</button></div>
+  </section>`;
+}
+function movilesHTML(){
+  const c = syncCfg(), url = hojaUrl(), pend = Object.keys(pendSync()).length;
+  const cuando = x => new Date(x).toLocaleString("es-ES", {day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"});
+  const pegar = `<form class="row" data-form="enlazar"><input class="tx grow" name="codigo" placeholder="Pega aquí el código de tu otro móvil" autocomplete="off" aria-label="Código de tu otro móvil"><button class="btn" type="submit">Conectar</button></form>`;
+  const antiguo = c.err === "antiguo" ? `<div class="hint down"><b>Actualiza el código de tu hoja (una sola vez):</b>
+      <ol class="small" style="padding-left:20px;margin:6px 0 0;display:flex;flex-direction:column;gap:4px">
+        <li>Más abajo, en «Tu hoja de Google», abre «Cómo conectarla» y pulsa <b>Copiar el código</b>.</li>
+        <li>En el ordenador, abre tu hoja → <b>Extensiones → Apps Script</b>. Borra todo, pega el código y guarda (disquete).</li>
+        <li><b>Implementar → Gestionar implementaciones</b> → el lápiz ✏️ → en «Versión» elige <b>Nueva versión</b> → <b>Implementar</b>. La dirección no cambia.</li>
+        <li>Vuelve aquí y pulsa <b>Sincronizar ahora</b>.</li></ol></div>` : "";
+  let cuerpo;
+  if (c.on){
+    cuerpo = `${c.err && c.err !== "antiguo" ? `<div class="hint down">${esc(errSyncTxt(c.err))}</div>` : ""}${antiguo}
+      ${c.ok ? `<div class="hint up">Sincronizado: ${esc(cuando(c.ok))}.${pend ? ` Pendientes de subir: ${pend}.` : ""}</div>` : `<div class="hint">Aún no se ha sincronizado.${pend ? ` Pendientes: ${pend}.` : ""}</div>`}
+      <div class="row"><button class="btn pri" data-act="syncAhora">Sincronizar ahora</button><button class="btn" data-act="syncCompartir">Conectar otro móvil</button></div>
+      ${S.verEnlace ? `<div class="sec" style="gap:6px"><span class="small">Mándate este enlace a tu otro móvil (WhatsApp, correo…) y ábrelo allí con Chrome o Safari. Si ya tienes FIT-ALL instalada en ese móvil, cópialo y pégalo en Ajustes → Tus móviles. <b>No se lo pases a nadie:</b> con él se puede escribir en tu hoja.</span>
+        <textarea class="tx small" id="enlace-txt" readonly rows="3" style="font-size:12px!important">${esc(enlaceMovil())}</textarea>
+        <div class="row"><button class="btn sm" data-act="enlaceCopiar">Copiar</button>${navigator.share ? `<button class="btn sm" data-act="enlaceCompartir">Compartir</button>` : ""}</div></div>` : ""}
+      <details><summary class="small">Desconectar este móvil</summary><p class="small muted">Este móvil dejará de recibir y enviar cambios. Sus datos se quedan como están.</p><button class="btn danger sm" data-act="syncOff">Desconectar</button></details>`;
+  } else if (url){
+    cuerpo = `<span class="small"><b>Si este es el móvil donde tienes tus datos</b>, actívalo aquí. Después, en «Conectar otro móvil», te daré un código para el otro.</span>
+      <button class="btn pri" data-act="syncActivar">Activar en este móvil</button>
+      <span class="small"><b>Si este es el segundo móvil</b>, pega el código que te dé el otro:</span>${pegar}`;
+  } else {
+    cuerpo = `<span class="small">Para tener lo mismo en tus dos móviles, FIT-ALL guarda una copia en tu hoja de Google. <b>En el móvil donde tienes tus datos</b>, conecta primero la hoja (justo debajo, en «Tu hoja de Google») y vuelve aquí.</span>
+      <span class="small"><b>Si este es el segundo móvil</b>, pega el código que te dé el otro:</span>${pegar}`;
+  }
+  return `<section class="card sec" id="moviles"><span class="eyebrow">Tus móviles</span>
+    <span class="small muted">Lo que apuntes en un móvil sale en el otro en unos segundos (los dos necesitan internet para ponerse al día).</span>
+    ${cuerpo}</section>`;
+}
+
 /* ---------- eventos ---------- */
 document.getElementById("nav").addEventListener("click", e => {
   const b = e.target.closest("button[data-tab]"); if (!b) return;
@@ -2690,6 +2832,14 @@ view.addEventListener("click", async e => {
     } catch(e){ toast("No pude conectar con esa dirección. Revisa que la copiaste entera y que en «Quién tiene acceso» pusiste «Cualquier usuario»."); }
   }
   else if (a === "hojaTodo") enviarTodo();
+  else if (a === "syncActivar") activarSync();
+  else if (a === "syncAhora") sincronizar(true);
+  else if (a === "syncCompartir"){ S.verEnlace = !S.verEnlace; render(); }
+  else if (a === "syncOff"){ lsSet("fitall_sync", null); lsSet("fitall_sync_pend", null); S.verEnlace = false; render(); toast("Este móvil ya no se sincroniza"); }
+  else if (a === "enlaceCopiar"){ const ta = $("#enlace-txt"); try { await navigator.clipboard.writeText(ta.value); toast("Enlace copiado"); } catch(e){ ta.focus(); ta.select(); toast("Selecciónalo y cópialo"); } }
+  else if (a === "enlaceCompartir"){ try { await navigator.share({title:"FIT-ALL: conectar mi otro móvil", text:"Abre este enlace en tu otro móvil para conectar FIT-ALL:", url:enlaceMovil()}); } catch(e) {} }
+  else if (a === "enlaceSi" && S.enlacePend) enlazar(S.enlacePend);
+  else if (a === "enlaceNo"){ S.enlacePend = null; render(); }
   else if (a === "hojaCopiar" && codigoHoja){
     const ta = $("#hoja-codigo");
     try { navigator.clipboard.writeText(codigoHoja).then(() => toast("Código copiado"), () => { ta.focus(); ta.select(); toast("Selecciona todo el texto y cópialo"); }); }
@@ -2794,6 +2944,11 @@ view.addEventListener("submit", async e => {
     S.medidas = S.medidas.filter(m => m.fecha!==f).concat([Object.assign({id:f}, doc)]).sort((a,b) => a.fecha<b.fecha?-1:1);
     render(); await escribir("medidas/"+f, doc); hojaMedidas(f); toast("Peso guardado");
   }
+  else if (k === "enlazar"){
+    const c = leerCodigo(fd.codigo);
+    if (!c){ toast("Ese código no es válido. Cópialo entero desde tu otro móvil."); return; }
+    S.enlacePend = c; render(); window.scrollTo(0,0);
+  }
   else if (k === "pasos"){
     const f = fm.dataset.f, v = num(String(fd.pasos || "").replace(/\./g, ""));
     if (v == null || v < 0 || v > 100000){ toast("Escribe los pasos con números, por ejemplo 8500."); return; }
@@ -2867,7 +3022,9 @@ view.addEventListener("submit", async e => {
   }
 });
 
-window.addEventListener("online", () => enviarHoja());
+window.addEventListener("online", () => { enviarHoja(); sincronizar(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sincronizar(); });
+setInterval(() => { if (document.visibilityState === "visible") sincronizar(); }, 90000);
 document.getElementById("imp-file").addEventListener("change", e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) leerCopia(f); });
 
 let toastT = null;

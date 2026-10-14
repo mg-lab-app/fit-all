@@ -3,6 +3,8 @@
 // Escribe los entrenos en las pestañas «Sem 1», «Sem 2»…, los pesos y la cintura en «Medidas»
 // y la dieta y el agua de cada día en la pestaña «Dieta (FIT-ALL)», que crea si no existe.
 // No toca las fórmulas (Peso máx, Volumen, Progreso…): solo las celdas que rellenas tú.
+// Además guarda una copia de todos tus datos en la pestaña oculta «FIT-ALL datos» para que
+// tus móviles estén siempre iguales. No toques esa pestaña.
 
 function doGet() {
   return salida({ ok: true, app: "FIT-ALL", hoja: SpreadsheetApp.getActiveSpreadsheet().getName() });
@@ -20,6 +22,7 @@ function doPost(e) {
     else if (clave !== d.clave) { return salida({ ok: false, error: "clave" }); }
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (d.accion === "sync") return salida(sincronizar(ss, d));
     var res = { ok: true, hoja: ss.getName(), sesiones: 0, medidas: 0, dieta: 0, noEncontrados: [] };
     (d.sesiones || []).forEach(function (s) { escribirSesion(ss, s, res); });
     (d.medidas || []).forEach(function (m) { escribirMedidas(ss, m, res); });
@@ -138,4 +141,50 @@ function escribirDieta(ss, x, res) {
     sh.getRange(fila, 1, 1, v.length).setValues([v]);
   }
   res.dieta++;
+}
+
+// ---------- sincronización entre móviles ----------
+// Cada dato de la app (una sesión, un día de dieta, una medida…) es una fila: ruta, orden, hora y el contenido.
+// Gana siempre la versión más reciente de cada dato.
+var TROZO = 45000;
+function sincronizar(ss, d) {
+  var nombre = "FIT-ALL datos";
+  var sh = ss.getSheetByName(nombre);
+  if (!sh) {
+    sh = ss.insertSheet(nombre);
+    sh.getRange(1, 1, 1, 4).setValues([["Ruta", "Orden", "Hora", "Datos (no tocar)"]]).setFontWeight("bold");
+    sh.setFrozenRows(1);
+    sh.hideSheet();
+  }
+  var props = PropertiesService.getScriptProperties();
+  var seq = Number(props.getProperty("FITALL_SEQ") || 0);
+  var n = sh.getLastRow(), ancho = Math.max(4, sh.getLastColumn());
+  var filas = n > 1 ? sh.getRange(2, 1, n - 1, ancho).getValues() : [];
+  var idx = {};
+  filas.forEach(function (f, i) { idx[f[0]] = i; });
+  var cambiado = false;
+  (d.cambios || []).forEach(function (c) {
+    if (!c || !c.path) return;
+    var i = idx[c.path];
+    if (i !== undefined && Number(filas[i][2]) > Number(c.t)) return; // aquí hay una versión más nueva
+    seq++;
+    var json = c.data == null ? "" : JSON.stringify(c.data);
+    var fila = [c.path, seq, Number(c.t)];
+    for (var k = 0; k < json.length || k === 0; k += TROZO) fila.push(json.slice(k, k + TROZO));
+    if (i !== undefined) filas[i] = fila; else { idx[c.path] = filas.length; filas.push(fila); }
+    cambiado = true;
+  });
+  if (cambiado) {
+    ancho = Math.max(4, filas.reduce(function (a, f) { return Math.max(a, f.length); }, 0));
+    var datos = filas.map(function (f) { var r = f.slice(0, ancho); while (r.length < ancho) r.push(""); return r; });
+    sh.getRange(2, 1, datos.length, ancho).setNumberFormat("@").setValues(datos);
+    props.setProperty("FITALL_SEQ", String(seq));
+  }
+  var desde = Number(d.desde || 0), docs = [];
+  filas.forEach(function (f) {
+    if (Number(f[1]) <= desde) return;
+    var json = f.slice(3).join("");
+    docs.push({ path: f[0], t: Number(f[2]), data: json ? JSON.parse(json) : null });
+  });
+  return { ok: true, hoja: ss.getName(), seq: seq, docs: docs };
 }
