@@ -260,6 +260,19 @@ ol.pasos li::marker{color:var(--neon);font-weight:700}
 .musrow.sel b{color:var(--neon)}
 .sube{color:var(--green)}
 .baja{color:var(--red)}
+/* Objetivo calculado y pasos */
+.hint.obj{display:flex;flex-direction:column;gap:3px;border-left:3px solid var(--neon)}
+.hint.obj b{font-size:15px}
+.hint.down{background:color-mix(in srgb,var(--warn) 14%,transparent);border-left-color:var(--warn)}
+.hint.up{border-left:3px solid var(--green)}
+.pasos-sem{position:relative;display:grid;grid-template-columns:repeat(7,1fr);gap:6px;height:84px;max-width:360px}
+.pb{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:12px;color:var(--muted)}
+.pb-col{height:64px;width:100%;max-width:26px;display:flex;align-items:flex-end;background:var(--surface-2);border-radius:5px;overflow:hidden}
+.pb-col i{display:block;width:100%;background:color-mix(in srgb,var(--neon) 45%,var(--surface-2));border-radius:5px 5px 0 0}
+.pb.ok .pb-col i{background:var(--neon)}
+.pb.hoy span:last-child{color:var(--neon);font-weight:700}
+.pb-meta{position:absolute;left:0;right:0;border-top:1px dashed var(--muted);opacity:.6;pointer-events:none}
+.balance{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:10px;background:var(--surface-2);font-size:15px}
 /* Base de la app instalada */
 html{-webkit-text-size-adjust:100%;color-scheme:dark}
 body{margin:0;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
@@ -339,7 +352,7 @@ const CICLO_DEF = {semanas:12, fases:[
   {nombre:"Apretar", rir:"1 rep de margen (0-1 en máquinas)", series:"Las series indicadas", ajuste:"igual"},
   {nombre:"Descarga", rir:"3-4 reps de margen", series:"Series −40 % y sin HIIT del jueves", ajuste:"descarga"}
 ]};
-const OBJ_DEF = {kcal:2350, p:150, c:280, g:70, aguaL:3, vasoMl:250, inicio:"2026-09-28", nombre:"", ciclo:CICLO_DEF,
+const OBJ_DEF = {kcal:2350, p:150, c:280, g:70, aguaL:3, vasoMl:250, pasos:10000, altura:170, edad:28, sexo:"hombre", inicio:"2026-09-28", nombre:"", ciclo:CICLO_DEF,
   suples:[{k:"proteina", nombre:"Proteína en polvo", det:"Un cacito; súmalo también en Dieta"},{k:"creatina", nombre:"Creatina", det:"3-5 g, cualquier hora del día"}],
   comidas:["Desayuno","Media mañana","Comida","Merienda","Cena"]};
 const obj = () => Object.assign({}, OBJ_DEF, S.obj || {});
@@ -622,6 +635,7 @@ function vHoy(){
       ${macrosHTML(t, o)}
     </section>
     ${aguaHTML(hoy)}
+    ${pasosHTML(hoy)}
     <section class="card">
       <span class="eyebrow">Suplementos</span>
       ${supleHTML(hoy, sup)}
@@ -719,20 +733,6 @@ function guardarBorrador(){
   clearTimeout(draftT);
   draftT = setTimeout(() => { if (!S.ed) return; S.ed.ts = Date.now(); lsSet(`borrador_${S.ed.fecha}_${S.ed.n}`, S.ed); }, 400);
 }
-function sugerencia(e, ult){
-  if (!ult) return `<div class="hint">Primera vez: elige un peso con el que te queden ${esc(fase(S.ed.fecha)?.rir || "2 reps de margen")}.</div>`;
-  const txt = ult.series.map(s => s.kg ? `${fmt(s.kg,2)}×${s.reps??"–"}` : `${s.reps??"–"}`).join(" · ");
-  let h = `<div class="hint">Última vez (${ddmm(ult.fecha)}): ${esc(txt)}${ult.rir!=null&&ult.rir!==""?` · RIR ${esc(ult.rir)}`:""}</div>`;
-  const top = repsTop(e.objetivo);
-  const conKg = ult.series.filter(s => s.kg);
-  if (e.modo==="kg" && top && conKg.length){
-    const max = Math.max(...conKg.map(s => s.kg));
-    const enMax = conKg.filter(s => s.kg === max);
-    if (enMax.length === conKg.length && enMax.every(s => (s.reps||0) >= top)) h += `<div class="hint up">Completaste ${top} reps en todas las series: sube el peso (1-2,5 kg arriba, 2,5-5 kg en pierna).</div>`;
-    else h += `<div class="hint">Mantén ${fmt(max,2)} kg hasta llegar a ${top} reps en todas las series.</div>`;
-  }
-  return h;
-}
 function vEntreno(){
   if (!S.cargado.plan && !S.sinDb) return `<div class="empty">Cargando tu rutina…</div>`;
   if (S.entEd) return vEntEd();
@@ -756,13 +756,13 @@ function vEntreno(){
     html += `<div class="sec-h"><h2>${esc(ed.nombre)}</h2>${f?`<span class="pill acc">Sem. ${f.semana} · ${esc(f.nombre)}</span>`:""}</div>`;
     if (f) html += `<div class="hint">${esc(f.series)} · ${esc(f.rir)}</div>`;
     ed.ejercicios.forEach((e, ei) => {
-      const ult = ultima(e.nombre, ed.fecha);
+      const og = objetivoHoy(e, ed.fecha);
       const lib = bibEj(e.nombre);
       const solo = e.modo === "tiempo" || e.modo === "cardio";
       const uRep = e.modo==="tiempo" ? "seg" : e.modo==="cardio" ? "min" : "reps";
       const uKg = e.modo==="corporal" ? "+kg" : "kg";
       const sets = e.series.map((s, si) => {
-        const ph = ult ? (ult.series[si] || ult.series[ult.series.length-1]) : null;
+        const ph = og.series[si] || null;
         const phKg = ph && ph.kg ? fmt(ph.kg,2) : (e.modo==="corporal"?"0":"");
         const phR = ph && ph.reps!=null ? String(ph.reps) : "";
         return `<div class="set ${solo?"solo":""} ${s.ok?"ok":""}">
@@ -775,7 +775,7 @@ function vEntreno(){
         <div class="ex-h">${lib ? `<button class="ej-mini" data-act="verEj" data-n="${esc(e.nombre)}" aria-label="Cómo se hace ${esc(e.nombre)}">${animEj(lib) || fotoEj(lib)}</button>` : ""}<div class="grow"><h3>${esc(e.nombre)}</h3><div class="ex-meta">${esc([e.objetivo, e.descanso ? "descanso " + e.descanso : ""].filter(Boolean).join(" · "))}</div>
             <button class="lnk-btn" data-act="exCambiar" data-e="${ei}">⇄ Cambiar ejercicio</button></div>
           <button class="iconbtn" data-act="exQuitar" data-e="${ei}" aria-label="Quitar ${esc(e.nombre)} de esta sesión">✕</button></div>
-        ${sugerencia(e, ult)}
+        ${objetivoHTML(e, og)}
         ${sets}
         <div class="row between">
           <div class="row"><button class="btn sm" data-act="addSet" data-e="${ei}">+ Serie</button>${e.series.length>1?`<button class="btn sm ghost" data-act="delSet" data-e="${ei}">− Serie</button>`:""}</div>
@@ -919,6 +919,7 @@ function vDieta(){
     </div>
     <section class="card sec">${macrosHTML(t, o)}</section>
     ${aguaHTML(f)}
+    ${pasosHTML(f)}
     <section class="card sec">
       <div class="row between"><span class="eyebrow">Apuntar lo que has comido</span><button class="btn sm" data-act="escanear" type="button"> Escanear código</button></div>
       <form class="sec" data-form="addItem">
@@ -1064,7 +1065,7 @@ function vProgreso(){
         <div class="stat"><span class="muted small">kcal / día</span><b>${fmt(kmed)}</b></div>
         <div class="stat"><span class="muted small">Proteína / día</span><b>${pmed==null?"—":fmt(pmed)+" g"}</b></div>
       </div>
-      <span class="muted small">${supTxt ? supTxt + " · " : ""}${diasDieta.length} días con comida apuntada.${ult7d.some(d => d.agua) ? ` Agua: ${fmt(ult7d.reduce((a, d) => a + (d.agua || 0), 0) / 7000, 1)} L al día de media.` : ""}</span>
+      <span class="muted small">${supTxt ? supTxt + " · " : ""}${diasDieta.length} días con comida apuntada.${ult7d.some(d => d.agua) ? ` Agua: ${fmt(ult7d.reduce((a, d) => a + (d.agua || 0), 0) / 7000, 1)} L al día de media.` : ""}${ult7d.some(d => d.pasos) ? ` Pasos: ${fmt(ult7d.filter(d => d.pasos).reduce((a, d) => a + d.pasos, 0) / ult7d.filter(d => d.pasos).length)} al día de media; ${ult7d.filter(d => d.pasos >= (num(obj().pasos) || 10000)).length} de 7 días con la meta.` : ""}</span>
     </section>
     ${mapaHTML()}
     <section class="card sec">
@@ -1120,7 +1121,7 @@ const opts = (obj, sel) => Object.entries(obj).map(([v,l]) => `<option value="${
 const optsL = (arr, sel) => arr.map(v => `<option ${v===sel?"selected":""}>${esc(v)}</option>`).join("");
 
 function vAjustes(){
-  if (!S.cfgEd) { S.cfgEd = clone({kcal:obj().kcal, p:obj().p, c:obj().c, g:obj().g, aguaL:obj().aguaL, vasoMl:obj().vasoMl, inicio:obj().inicio, nombre:obj().nombre, ciclo:ciclo(), suples:obj().suples||[], comidas:comidas(), recordatorios:rec()}); S.cfgDirty = false; }
+  if (!S.cfgEd) { S.cfgEd = clone({kcal:obj().kcal, p:obj().p, c:obj().c, g:obj().g, aguaL:obj().aguaL, vasoMl:obj().vasoMl, pasos:obj().pasos, altura:obj().altura, edad:obj().edad, sexo:obj().sexo, inicio:obj().inicio, nombre:obj().nombre, ciclo:ciclo(), suples:obj().suples||[], comidas:comidas(), recordatorios:rec()}); S.cfgDirty = false; }
   const o = S.cfgEd;
   const kc = (num(o.p)||0)*4 + (num(o.c)||0)*4 + (num(o.g)||0)*9;
   const ip = S.importPend;
@@ -1159,6 +1160,7 @@ function vAjustes(){
       <div class="grid2">
         <label class="lb">Agua al día (litros)<input class="tx" id="ob-agua" data-c="aguaL" inputmode="decimal" value="${esc(String(o.aguaL).replace(".", ","))}"></label>
         <label class="lb">Tamaño del vaso (ml)<input class="tx" id="ob-vaso" data-c="vasoMl" inputmode="numeric" value="${esc(o.vasoMl)}"></label>
+        <label class="lb">Pasos al día<input class="tx" id="ob-pasos" data-c="pasos" inputmode="numeric" value="${esc(o.pasos)}"></label>
       </div>
       <div class="row between"><span class="muted small" id="kc-macros">Los macros suman ${fmt(kc)} kcal.</span><button class="btn sm" data-act="kcalDeMacros">Usar esa cifra</button></div>
       <details><summary class="small">Cómo se calcularon</summary><div class="small muted" style="max-width:62ch">
@@ -1170,6 +1172,9 @@ function vAjustes(){
       <span class="eyebrow">Plan</span>
       <div class="grid2">
         <label class="lb">Tu nombre<input class="tx" id="ob-nom" data-c="nombre" value="${esc(o.nombre||"")}"></label>
+        <label class="lb">Altura (cm)<input class="tx" id="ob-alt" data-c="altura" inputmode="numeric" value="${esc(o.altura)}"></label>
+        <label class="lb">Edad<input class="tx" id="ob-edad" data-c="edad" inputmode="numeric" value="${esc(o.edad)}"></label>
+        <label class="lb">Sexo (para el gasto)<select class="tx" id="ob-sexo" data-c="sexo">${opts({hombre:"Hombre", mujer:"Mujer"}, o.sexo || "hombre")}</select></label>
         <label class="lb">Semanas del plan<input class="tx" id="ob-sem" data-c="semanas" inputmode="numeric" value="${esc(o.ciclo.semanas)}"></label>
       </div>
       <label class="lb">Inicio (lunes de la semana 1)<input class="tx" type="date" id="ob-ini" data-c="inicio" value="${esc(o.inicio)}"></label>
@@ -1918,6 +1923,8 @@ async function guardarCfg(){
   if (sem < 1) { toast("Pon cuántas semanas dura el plan."); return; }
   const d = Object.assign({}, S.obj||{}, v, {
     aguaL: Math.min(8, Math.max(0.5, num(o.aguaL) || 3)), vasoMl: Math.min(1000, Math.max(50, Math.round(num(o.vasoMl) || 250))),
+    pasos: Math.min(50000, Math.max(1000, Math.round(num(String(o.pasos||"").replace(/\./g, "")) || 10000))),
+    altura: Math.min(230, Math.max(120, Math.round(num(o.altura) || 170))), edad: Math.min(99, Math.max(14, Math.round(num(o.edad) || 28))), sexo: o.sexo === "mujer" ? "mujer" : "hombre",
     inicio: o.inicio || OBJ_DEF.inicio, nombre: (o.nombre||"").trim(),
     ciclo: {semanas: sem, fases: o.ciclo.fases.map(f => ({nombre:(f.nombre||"").trim()||"Semana", rir:(f.rir||"").trim(), series:(f.series||"").trim(), ajuste:f.ajuste||"igual"}))},
     suples: o.suples.filter(s => (s.nombre||"").trim()).map(s => ({k: s.k || slug(s.nombre) || nuevoId(), nombre:s.nombre.trim(), det:(s.det||"").trim()})),
@@ -2385,6 +2392,162 @@ function comoEntreno(ed){
   });
 }
 
+/* ---------- progresión automática: qué toca hoy en cada ejercicio ---------- */
+// Progresión doble: mismo peso hasta completar el máximo de repeticiones en todas las series; entonces se sube
+// (1-2,5 kg en tren superior, 2,5-5 kg en tren inferior) y se vuelve al mínimo. La fase del ciclo ajusta series y esfuerzo.
+const INFERIOR = ["cuadriceps","gluteo","femoral","aductor","abductor","gemelo"];
+const PIERNA_PESADA = ["sentadilla","prensa","peso-muerto","peso-muerto-rumano","hip-thrust"];
+function rangoReps(objetivo){
+  const m = String(objetivo||"").match(/×\s*(\d+)(?:\s*-\s*(\d+))?/);
+  return m ? {lo:+m[1], hi:+(m[2]||m[1])} : null;
+}
+function incremento(nombre, W, modo){
+  if (modo === "corporal") return 2.5;
+  const lib = bibEj(nombre);
+  if (lib && (lib.e === "Mancuernas" || lib.e === "Kettlebell")) return W < 10 ? 1 : (W % 2.5 === 0 ? 2.5 : 2);
+  if (lib ? PIERNA_PESADA.includes(lib.f) : /sentadilla|prensa|peso muerto|hip thrust/i.test(nombre)) return 5;
+  if (lib && (lib.p||[]).some(m => INFERIOR.includes(m))) return 2.5;
+  return 2.5;
+}
+// Última sesión anterior con ese ejercicio; las de semanas de descarga no sirven de referencia si hay otra.
+function referencia(nombre, fecha){
+  let reserva = null;
+  for (const s of S.sesiones){
+    if (s.fecha >= fecha) continue;
+    const e = (s.ejercicios||[]).find(x => x.nombre === nombre);
+    if (!e) continue;
+    const series = (e.series||[]).filter(x => x.reps != null || x.kg != null);
+    if (!series.length) continue;
+    const r = {fecha:s.fecha, series, rir:e.rir};
+    const fz = fase(s.fecha);
+    if (fz && !fz.fuera && fz.ajuste === "descarga"){ reserva = reserva || r; continue; }
+    return r;
+  }
+  return reserva;
+}
+function objetivoHoy(e, fecha){
+  const n = Math.max(1, (e.series||[]).length);
+  const fz = fase(fecha);
+  const fs = !fz || fz.fuera ? "normal" : fz.ajuste === "descarga" ? "descarga" : fz.ajuste === "menos1" ? "adapt" : "normal";
+  const r = rangoReps(e.objetivo), lo = r ? r.lo : null, hi = r ? r.hi : null;
+  const ref = referencia(e.nombre, fecha);
+  const out = {tipo:"", fase:fs, ref, series:[], kg:null, W:null, lo, hi};
+  const lista = f => Array.from({length:n}, (_, i) => f(i));
+  if (!ref){
+    out.tipo = "primera"; out.series = lista(() => ({kg:null, reps:lo})); return out;
+  }
+  const ser = ref.series, de = i => ser[Math.min(i, ser.length - 1)];
+  if (e.modo === "cardio"){
+    out.tipo = "cardio"; out.series = lista(i => ({kg:null, reps:de(i).reps})); return out;
+  }
+  if (e.modo === "tiempo"){
+    const todas = hi != null && ser.every(s => (s.reps||0) >= hi);
+    out.tipo = fs === "descarga" ? "descarga" : todas ? "subir" : "mantener";
+    out.series = lista(i => { const b = de(i).reps || 0;
+      return {kg:null, reps: fs === "descarga" ? (lo || b) : todas ? b + 5 : (hi != null ? Math.max(lo, Math.min(hi, b + 5)) : b + 5)}; });
+    return out;
+  }
+  // kg y peso corporal (+lastre)
+  const W = Math.max(0, ...ser.map(s => s.kg || 0));
+  const enW = ser.filter(s => (s.kg || 0) === W);
+  // las series más ligeras de aproximación no cuentan: basta con que todas las del peso de trabajo lleguen al máximo
+  const todasTop = hi != null && enW.length >= Math.min(2, ser.length) && enW.every(s => (s.reps||0) >= hi);
+  const malas = lo != null ? enW.filter(s => (s.reps||0) < lo).length : 0;
+  const flojo = lo != null && malas > enW.length / 2 && enW.some(s => (s.reps||0) <= lo - 2);
+  const inc = incremento(e.nombre, W, e.modo);
+  const repsUlt = i => de(i).reps || 0;
+  let kg = W, reps;
+  if (fs === "descarga"){
+    out.tipo = "descarga";
+    const paso = W < 10 ? 1 : 2.5;
+    kg = e.modo === "corporal" ? W : Math.max(paso, Math.floor(W * 0.9 / paso) * paso);
+    reps = i => lo != null ? lo : repsUlt(i);
+  } else if (todasTop){
+    out.tipo = "subir"; kg = W + inc; reps = () => lo;
+  } else if (flojo){
+    out.tipo = "bajar"; kg = Math.max(0, W - inc); reps = () => lo;
+  } else if (fs === "adapt"){
+    out.tipo = "adapt"; reps = i => lo != null ? lo : repsUlt(i);
+  } else {
+    out.tipo = "mantener";
+    reps = i => hi != null ? Math.max(lo, Math.min(hi, repsUlt(i) + 1)) : repsUlt(i);
+  }
+  out.W = W; out.kg = (e.modo === "kg" && !W) ? null : kg; out.inc = inc;
+  out.series = lista(i => ({kg: (e.modo === "kg" && !W) ? null : kg, reps: reps(i)}));
+  return out;
+}
+function objetivoHTML(e, o){
+  const kgTxt = k => e.modo === "corporal" ? (k ? `+${fmt(k,2)} kg de lastre` : "tu peso") : `${fmt(k,2)} kg`;
+  const u = e.modo === "tiempo" ? "s" : e.modo === "cardio" ? "min" : "reps";
+  const reps = o.series.map(s => s.reps);
+  const repsTxt = reps.every(x => x === reps[0]) ? `${reps[0] ?? "–"} ${u}` : `${reps.join("/")} ${u}`;
+  const ult = o.ref ? `<div class="muted small">Última vez (${ddmm(o.ref.fecha)}): ${esc(o.ref.series.map(s => s.kg ? `${fmt(s.kg,2)}×${s.reps??"–"}` : `${s.reps??"–"}`).join(" · "))}${o.ref.rir!=null&&o.ref.rir!==""?` · RIR ${esc(o.ref.rir)}`:""}</div>` : "";
+  if (o.tipo === "primera") return `<div class="hint"><b>Primera vez.</b> Elige un peso con el que te queden ${esc(fase(S.ed.fecha)?.rir || "2 reps de margen")}${o.lo ? ` haciendo ${o.lo}${o.hi && o.hi !== o.lo ? "-" + o.hi : ""} ${u}` : ""}. A partir de la próxima, FIT-ALL te dirá qué peso poner.</div>`;
+  if (o.tipo === "cardio") return `<div class="hint"><b>Hoy toca:</b> ${esc(e.objetivo || repsTxt)}</div>${ult}`;
+  const n = o.series.length;
+  const cab = o.kg != null || e.modo === "corporal" ? `${n} × ${kgTxt(o.kg)} × ${repsTxt}` : `${n} × ${repsTxt}`;
+  const sinKg = e.modo === "kg" && !o.W ? " La última vez no apuntaste el peso: apúntalo hoy y te diré cuándo subir." : "";
+  let por = "", cls = "";
+  const W = o.W != null ? kgTxt(o.W) : "";
+  if (o.tipo === "subir"){ cls = "up";
+    por = e.modo === "tiempo" ? `Aguantaste ${o.hi} s en todas las series: suma 5 s.` : `Completaste ${o.hi} reps en todas las series con ${W}: ${e.modo === "corporal" && !o.W ? "añade lastre" : `sube ${fmt(o.inc,2)} kg`} y vuelve a ${o.lo} reps.`; }
+  else if (o.tipo === "bajar"){ cls = "down"; por = `La última vez te quedaste lejos de ${o.lo} reps con ${W}: baja un poco, haz ${o.lo} bien y vuelve a subir.`; }
+  else if (o.tipo === "descarga") por = `Semana de descarga: ${e.modo === "kg" && o.W ? "algo menos de peso (≈10 %), " : ""}menos series y que te sobren 3-4 reps.`;
+  else if (o.tipo === "adapt") por = `Semana de adaptación: mismo peso, ${o.lo} reps con 3 de margen y cuidando la técnica.`;
+  else if (o.hi != null) por = e.modo === "tiempo" ? `Intenta 5 s más que la última vez, hasta ${o.hi} s.` : `Mismo peso: intenta una rep más que la última vez, hasta llegar a ${o.hi} en todas las series.`;
+  else por = "Repite lo de la última vez.";
+  return `<div class="hint obj ${cls}"><b>Hoy toca: ${esc(cab)}</b><span>${esc(por + sinKg)}</span></div>${ult}`;
+}
+
+/* ---------- pasos ---------- */
+const pesoActual = () => { const m = S.medidas.filter(x => x.peso); return m.length ? m[m.length - 1].peso : 75; };
+const kcalPasos = p => Math.round((p || 0) * pesoActual() * 0.0005);
+function gastoDia(f){
+  const o = obj(), peso = pesoActual();
+  const reposo = 10 * peso + 6.25 * (num(o.altura) || 170) - 5 * (num(o.edad) || 28) + (o.sexo === "mujer" ? -161 : 5);
+  const base = Math.round(reposo * 1.2);
+  const pasos = (S.diario[f] || {}).pasos || 0, andar = kcalPasos(pasos);
+  let entreno = 0;
+  S.sesiones.filter(s => s.fecha === f).forEach(s => (s.ejercicios||[]).forEach(e => {
+    if (e.modo === "cardio") entreno += (e.series||[]).reduce((a, x) => a + (x.reps || 0), 0) * 7;
+    else entreno += (e.series||[]).length * 8;
+  }));
+  entreno = Math.round(entreno);
+  return {base, andar, entreno, total: base + andar + entreno, pasos};
+}
+const mil = n => String(Math.round(n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+function pasosHTML(f){
+  const meta = Math.max(1000, num(obj().pasos) || 10000);
+  const p = (S.diario[f] || {}).pasos;
+  const pct = Math.min(100, (p || 0) / meta * 100);
+  const dias = Array.from({length:7}, (_, i) => addDias(f, i - 6));
+  const vals = dias.map(d => (S.diario[d] || {}).pasos || 0);
+  const tope = Math.max(meta, ...vals) * 1.05;
+  const barras = dias.map((d, i) => `<div class="pb ${vals[i] >= meta ? "ok" : ""} ${d === f ? "hoy" : ""}"><span class="pb-col"><i style="height:${vals[i] / tope * 100}%"></i></span><span>${"DLMXJVS"[parseISO(d).getDay()]}</span></div>`).join("");
+  const metaPos = meta / tope * 100;
+  const g = gastoDia(f), comido = totalesDia(f).kcal;
+  const bal = comido - g.total;
+  const hoy = f === hoyISO();
+  return `<section class="card sec" id="pasos">
+    <div class="sec-h"><span class="eyebrow">Pasos</span><span class="pill ${p >= meta ? "ok" : ""}">${p >= meta ? "Meta cumplida" : p ? `Faltan ${mil(meta - p)}` : "Sin apuntar"}</span></div>
+    <div class="row between" style="align-items:baseline"><div><span class="agua-big" style="color:var(--neon)">${mil(p || 0)}</span> <span class="muted">/ ${mil(meta)}</span></div><span class="muted small">≈ ${fmt(kcalPasos(p))} kcal andando</span></div>
+    <div class="bar"><i style="width:${pct}%;background:var(--neon)"></i></div>
+    <form class="row" data-form="pasos" data-f="${f}">
+      <label class="fld grow" style="max-width:200px"><input id="pasos-${f}" name="pasos" inputmode="numeric" placeholder="${p ? mil(p) : "8.000"}" aria-label="Pasos ${hoy ? "de hoy" : "de este día"}"><span>pasos</span></label>
+      <button class="btn pri" type="submit">${p ? "Cambiar" : "Guardar"}</button>
+    </form>
+    <span class="muted small">Al acabar el día, mira los pasos en la app Salud del iPhone (o Google Fit o Samsung Health en Android) y escríbelos aquí.</span>
+    <div class="pasos-sem" aria-label="Pasos de los últimos 7 días"><span class="pb-meta" style="bottom:${(18 + metaPos * 0.64).toFixed(1)}px"></span>${barras}</div>
+    <div class="balance">
+      <div class="row between"><span>Gasto estimado del día</span><b>≈ ${mil(g.total)} kcal</b></div>
+      <span class="muted small">Cuerpo y día a día ${mil(g.base)} · pasos ${fmt(g.andar)}${g.entreno ? ` · entreno ${fmt(g.entreno)}` : ""}</span>
+      ${comido ? `<div class="row between"><span>Comido</span><b>${mil(comido)} kcal</b></div>
+        <div class="row between"><span>${bal < 0 ? "Déficit" : "Superávit"}</span><b class="${bal < -700 || bal > 0 ? "baja" : "sube"}">${mil(Math.abs(bal))} kcal</b></div>
+        <span class="muted small">${bal > 0 ? "Hoy has comido más de lo que gastas." : bal < -700 ? "Déficit grande: si se repite, puede costarte fuerza." : "Para perder grasa sin perder fuerza se busca un déficit de 300-600 kcal."} Son cálculos aproximados.</span>` : `<span class="muted small">Apunta lo que comes y aquí verás si vas en déficit.</span>`}
+    </div>
+  </section>`;
+}
+
 /* ---------- eventos ---------- */
 document.getElementById("nav").addEventListener("click", e => {
   const b = e.target.closest("button[data-tab]"); if (!b) return;
@@ -2478,8 +2641,7 @@ view.addEventListener("click", async e => {
   else if (a === "check" && S.ed){
     const ex = S.ed.ejercicios[+b.dataset.e], st = ex.series[+b.dataset.s];
     if (!st.ok){
-      const ult = ultima(ex.nombre, S.ed.fecha);
-      const ph = ult ? (ult.series[+b.dataset.s] || ult.series[ult.series.length-1]) : null;
+      const ph = objetivoHoy(ex, S.ed.fecha).series[+b.dataset.s] || null;
       if (st.kg === "" && ph && ph.kg) st.kg = String(ph.kg).replace(".",",");
       if (st.reps === "" && ph && ph.reps!=null) st.reps = String(ph.reps);
       if (st.reps === "" && st.kg === ""){ toast("Escribe los kilos y las repeticiones de la serie."); return; }
@@ -2631,6 +2793,14 @@ view.addEventListener("submit", async e => {
     const doc = Object.assign({}, prev, {fecha:f, peso:p}); delete doc.id;
     S.medidas = S.medidas.filter(m => m.fecha!==f).concat([Object.assign({id:f}, doc)]).sort((a,b) => a.fecha<b.fecha?-1:1);
     render(); await escribir("medidas/"+f, doc); hojaMedidas(f); toast("Peso guardado");
+  }
+  else if (k === "pasos"){
+    const f = fm.dataset.f, v = num(String(fd.pasos || "").replace(/\./g, ""));
+    if (v == null || v < 0 || v > 100000){ toast("Escribe los pasos con números, por ejemplo 8500."); return; }
+    const d = Object.assign({fecha:f, items:[]}, S.diario[f] || {}); d.pasos = Math.round(v);
+    await guardarDia(f, d);
+    const meta = num(obj().pasos) || 10000;
+    toast(v >= meta ? `¡${mil(v)} pasos! Meta cumplida` : `Pasos guardados: ≈ ${fmt(kcalPasos(v))} kcal andando`);
   }
   else if (k === "addMedida"){
     const f = fd.fecha || hoyISO(); const p = num(fd.peso), c = num(fd.cintura);
