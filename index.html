@@ -288,7 +288,7 @@ h3{font-size:17px}
 .top{align-items:center}
 .phase{max-width:48%;font-size:12px;line-height:1.3}
 .phase b{font-family:var(--f-display);font-weight:800;font-size:15px;line-height:1.15;margin-bottom:2px}
-.logo{width:46px;height:46px;border-radius:13px;flex:none;border:1px solid rgba(255,255,255,.14);box-shadow:0 0 18px rgba(57,255,20,.18),0 4px 14px rgba(0,0,0,.6)}
+.logo{width:46px;height:46px;border-radius:13px;flex:none;object-fit:cover;background:#000;border:1px solid rgba(255,255,255,.14);box-shadow:0 0 18px rgba(57,255,20,.18),0 4px 14px rgba(0,0,0,.6)}
 .top{border-bottom:0;padding-bottom:14px;background:linear-gradient(#000 78%,rgba(0,0,0,0))}
 .card{background:linear-gradient(180deg,#202024 0%,#1a1a1d 100%);border:1px solid rgba(255,255,255,.07);border-radius:var(--r);padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.04)}
 .stack{gap:16px}
@@ -358,8 +358,7 @@ input.tx,select.tx,textarea.tx{font-size:16px!important}
 <div class="wrap">
   <header class="top">
     <div class="brand-w">
-      <svg class="logo" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" fill="#000"/><g transform="translate(50,51) scale(0.8) translate(-50,-55)"><g fill="#fff"><circle cx="50" cy="18.6" r="7.4"/><path d="M50,27.5 L53.2,27.5 Q54.5,30.2 59,31 Q64,31.2 67.5,30 Q71,26.5 74.5,24.2 Q78,22.4 80.2,24.8 L80.6,20 Q79.6,15.6 80.4,12.2 Q82.2,9 85.6,9.4 Q89,10.2 89.6,13.6 Q90.2,17.6 89,21 Q90.8,27.6 89.4,33.2 Q87.6,37.6 82.8,38.4 Q76.2,39.4 71.4,38.2 Q68.4,37.8 66.6,39.4 Q66.8,46.6 63.8,53 Q60.4,58.6 59.6,63.4 Q61.6,67 62.6,71 Q64.8,77.4 63.4,83.6 L62,87.4 Q64.4,91.6 63.2,96.2 L64.6,99 L55.6,99 L56.2,95.6 Q54.4,91.4 55,87.6 Q53.6,82.4 53.2,77.6 Q52.2,73.6 50,71.8 Z"/><path d="M50,27.5 L53.2,27.5 Q54.5,30.2 59,31 Q64,31.2 67.5,30 Q71,26.5 74.5,24.2 Q78,22.4 80.2,24.8 L80.6,20 Q79.6,15.6 80.4,12.2 Q82.2,9 85.6,9.4 Q89,10.2 89.6,13.6 Q90.2,17.6 89,21 Q90.8,27.6 89.4,33.2 Q87.6,37.6 82.8,38.4 Q76.2,39.4 71.4,38.2 Q68.4,37.8 66.6,39.4 Q66.8,46.6 63.8,53 Q60.4,58.6 59.6,63.4 Q61.6,67 62.6,71 Q64.8,77.4 63.4,83.6 L62,87.4 Q64.4,91.6 63.2,96.2 L64.6,99 L55.6,99 L56.2,95.6 Q54.4,91.4 55,87.6 Q53.6,82.4 53.2,77.6 Q52.2,73.6 50,71.8 Z" transform="translate(100,0) scale(-1,1)"/></g>
-    <g fill="none" stroke="#000" stroke-width="1.3" stroke-linecap="round"><path d="M51.2,38.2 Q56,36.6 62.4,37.6"/><path d="M51.2,38.2 Q55,43.8 62.8,42"/><path d="M51.2,47 L56,46.6"/><path d="M51.2,52.4 L55.6,52.2"/><path d="M51.4,57.6 L55,57.6"/><path d="M75,26 Q78.6,28.2 80.6,31.4"/><path d="M56.2,72 Q58.6,78 57.4,84"/><g transform="translate(100,0) scale(-1,1)"><path d="M51.2,38.2 Q56,36.6 62.4,37.6"/><path d="M51.2,38.2 Q55,43.8 62.8,42"/><path d="M51.2,47 L56,46.6"/><path d="M51.2,52.4 L55.6,52.2"/><path d="M51.4,57.6 L55,57.6"/><path d="M75,26 Q78.6,28.2 80.6,31.4"/><path d="M56.2,72 Q58.6,78 57.4,84"/></g><path d="M50,46 L50,62"/></g></g></svg>
+      <img class="logo" src="icons/logo.png" alt="" width="46" height="46">
       <div class="brand">
         <span class="eyebrow" id="eyebrow">Entreno y dieta</span>
         <h1>FIT-ALL</h1>
