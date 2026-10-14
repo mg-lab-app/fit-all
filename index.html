@@ -1837,7 +1837,7 @@ function enviarTodo(){
   enviarHoja(true);
 }
 let codigoHoja = null;
-function cargarCodigoHoja(){ if (codigoHoja) return; fetch("hoja-codigo.gs").then(r => r.ok ? r.text() : null).then(t => { if (t){ codigoHoja = t; if (S.tab === "ajustes") pedirRender(); } }).catch(() => {}); }
+function cargarCodigoHoja(){ if (codigoHoja) return; fetch("hoja-codigo.gs", {cache:"no-store"}).then(r => r.ok ? r.text() : null).then(t => { if (t){ codigoHoja = t; if (S.tab === "ajustes") pedirRender(); } }).catch(() => {}); }
 function hojaHTML(){
   cargarCodigoHoja();
   const url = hojaUrl(), ok = lsGet("fitall_hoja_ok"), err = lsGet("fitall_hoja_err"), pend = nPend();
@@ -2560,7 +2560,7 @@ function pasosHTML(f){
 const SY = {corriendo:false, otra:false};
 const syncCfg = () => lsGet("fitall_sync") || {};
 const syncOn = () => !!syncCfg().on;
-const syncUrl = () => syncCfg().url || hojaUrl();
+const syncUrl = () => hojaUrl() || syncCfg().url;
 const pendSync = () => lsGet("fitall_sync_pend") || {};
 const setSync = o => lsSet("fitall_sync", Object.assign(syncCfg(), o));
 function marcarSync(paths){
@@ -2667,7 +2667,9 @@ function movilesHTML(){
         <li>Más abajo, en «Tu hoja de Google», abre «Cómo conectarla» y pulsa <b>Copiar el código</b>.</li>
         <li>En el ordenador, abre tu hoja → <b>Extensiones → Apps Script</b>. Borra todo, pega el código y guarda (disquete).</li>
         <li><b>Implementar → Gestionar implementaciones</b> → el lápiz ✏️ → en «Versión» elige <b>Nueva versión</b> → <b>Implementar</b>. La dirección no cambia.</li>
-        <li>Vuelve aquí y pulsa <b>Sincronizar ahora</b>.</li></ol></div>` : "";
+        <li>Vuelve aquí y pulsa <b>Comprobar mi hoja</b>.</li></ol>
+      <button class="btn sm" data-act="hojaComprobar" style="margin-top:6px">Comprobar mi hoja</button>
+      ${S.hojaCheck ? `<div class="small" style="margin-top:6px">${S.hojaCheck}</div>` : ""}</div>` : "";
   let cuerpo;
   if (c.on){
     cuerpo = `${c.err && c.err !== "antiguo" ? `<div class="hint down">${esc(errSyncTxt(c.err))}</div>` : ""}${antiguo}
@@ -2834,6 +2836,18 @@ view.addEventListener("click", async e => {
   else if (a === "hojaTodo") enviarTodo();
   else if (a === "syncActivar") activarSync();
   else if (a === "syncAhora") sincronizar(true);
+  else if (a === "hojaComprobar"){
+    const url = syncUrl(), fin = url.replace(/\/exec.*$/, "").slice(-6);
+    S.hojaCheck = "Comprobando…"; render();
+    try {
+      let nuevo = false;
+      try { await postSync(url, {clave:claveHoja(), accion:"sync", desde:syncCfg().seq || 0, cambios:[]}); nuevo = true; }
+      catch(err){ if (String(err.message) === "clave"){ S.hojaCheck = esc(errSyncTxt("clave")); render(); return; } if (String(err.message) !== "antiguo") throw err; }
+      if (nuevo){ S.hojaCheck = null; setSync({err:null}); render(); toast("¡Tu hoja ya tiene el código nuevo!"); sincronizar(true); return; }
+      S.hojaCheck = `Tu hoja sigue respondiendo con el código antiguo. Pasa una de estas dos cosas:<br>• Falta el último paso: <b>Implementar → Gestionar implementaciones → ✏️ → Versión: «Nueva versión» → Implementar</b>. Guardar el código no basta.<br>• O hiciste una <b>Nueva implementación</b> y te dio otra dirección. La app usa la que acaba en <b>…${esc(fin)}/exec</b>. Si la de Apps Script es distinta, pégala abajo en «Tu hoja de Google» y pulsa «Cambiar dirección».`;
+    } catch(e){ S.hojaCheck = "No pude conectar con tu hoja. Revisa que tienes internet."; }
+    render();
+  }
   else if (a === "syncCompartir"){ S.verEnlace = !S.verEnlace; render(); }
   else if (a === "syncOff"){ lsSet("fitall_sync", null); lsSet("fitall_sync_pend", null); S.verEnlace = false; render(); toast("Este móvil ya no se sincroniza"); }
   else if (a === "enlaceCopiar"){ const ta = $("#enlace-txt"); try { await navigator.clipboard.writeText(ta.value); toast("Enlace copiado"); } catch(e){ ta.focus(); ta.select(); toast("Selecciónalo y cópialo"); } }

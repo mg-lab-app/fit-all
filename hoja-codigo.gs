@@ -7,7 +7,7 @@
 // tus móviles estén siempre iguales. No toques esa pestaña.
 
 function doGet() {
-  return salida({ ok: true, app: "FIT-ALL", hoja: SpreadsheetApp.getActiveSpreadsheet().getName() });
+  return salida({ ok: true, app: "FIT-ALL", version: 2, hoja: SpreadsheetApp.getActiveSpreadsheet().getName() });
 }
 
 function doPost(e) {
