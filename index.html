@@ -343,6 +343,8 @@ hr{border-top-color:rgba(255,255,255,.07)}
 .ses-ic .turno.noche svg{stroke:#9db8ff}
 .ses.hecha .ses-ic{border-color:rgba(57,217,106,.6);box-shadow:0 0 0 2px rgba(57,217,106,.18)}
 .ses.hecha .ses-ic::after{content:"✓";position:absolute;bottom:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--green);color:#000;font-size:12px;font-weight:900;display:grid;place-items:center}
+.set.ap .si{color:var(--yellow);font-weight:900}
+.set.ap .fld{border-style:dashed;background:#111114}
 /* Base de la app instalada */
 html{-webkit-text-size-adjust:100%;color-scheme:dark}
 body{margin:0;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
@@ -425,7 +427,7 @@ const CICLO_DEF = {semanas:12, fases:[
   {nombre:"Apretar", rir:"1 rep de margen (0-1 en máquinas)", series:"Las series indicadas", ajuste:"igual"},
   {nombre:"Descarga", rir:"3-4 reps de margen", series:"Series −40 % y sin HIIT del jueves", ajuste:"descarga"}
 ]};
-const OBJ_DEF = {kcal:2350, p:150, c:280, g:70, aguaL:3, vasoMl:250, pasos:10000, altura:170, edad:28, sexo:"hombre", inicio:"2026-09-28", nombre:"", ciclo:CICLO_DEF,
+const OBJ_DEF = {kcal:2350, p:150, c:280, g:70, aguaL:3, vasoMl:250, pasos:10000, altura:170, edad:28, sexo:"hombre", inicio:"2026-09-28", nombre:"", ciclo:CICLO_DEF, metodo:{tipo:"hi", desde:5},
   suples:[{k:"proteina", nombre:"Proteína en polvo", det:"Un cacito; súmalo también en Dieta"},{k:"creatina", nombre:"Creatina", det:"3-5 g, cualquier hora del día"}],
   comidas:["Desayuno","Media mañana","Comida","Merienda","Cena"]};
 const obj = () => Object.assign({}, OBJ_DEF, S.obj || {});
@@ -439,8 +441,34 @@ function fase(f){
   const C = ciclo(), L = C.fases.length;
   const semana = Math.floor(diff/7) + 1;
   const sc = ((semana-1) % L) + 1;
-  return Object.assign({ajuste:"igual"}, C.fases[sc-1], {semana, ciclo: Math.floor((semana-1)/L)+1, sc, total:C.semanas, fuera: semana>C.semanas});
+  const r = Object.assign({ajuste:"igual"}, C.fases[sc-1], {semana, ciclo: Math.floor((semana-1)/L)+1, sc, total:C.semanas, fuera: semana>C.semanas});
+  const m = obj().metodo || {};
+  if (m.tipo === "hi" && semana >= (+m.desde || 1) && !r.fuera){
+    r.hi = true;
+    r.hiFase = r.ajuste === "menos1" ? "adapt" : r.ajuste === "descarga" ? "descarga" : (sc === L - 1 ? "max" : "int");
+    Object.assign(r, HI_FASE[r.hiFase]);
+  }
+  return r;
 }
+const HI_FASE = {
+  adapt: {nombre:"Adaptación al fallo", rir:"Efectivas a 1 rep del fallo", series:"1 de aproximación + 1-3 efectivas"},
+  int: {nombre:"Intensidad", rir:"Efectivas al fallo (a 1 rep en básicos con barra)", series:"1 de aproximación + 1-3 efectivas"},
+  max: {nombre:"Máxima intensidad", rir:"Efectivas al fallo (a 1 rep en básicos con barra)", series:"1 de aproximación + 1-3 efectivas"},
+  descarga: {nombre:"Descarga", rir:"3-4 reps de margen, nada al fallo", series:"1 de aproximación + 1 efectiva"}
+};
+// Alta intensidad: 4 series del plan → 3 efectivas, 3 → 2, 1-2 → 1; en descarga, 1.
+function efectivasHI(objetivo, f){
+  const m = String(objetivo||"").match(/^(\d+)\s*×/), base = m ? +m[1] : 3;
+  if (f && f.hiFase === "descarga") return 1;
+  return base >= 4 ? 3 : base === 3 ? 2 : 1;
+}
+const usaAprox = (e, f) => !!(f && f.hi && (e.modo === "kg" || e.modo === "corporal" || !e.modo));
+function seriesIniciales(e, f){
+  const vacia = () => ({kg:"", reps:"", ok:false});
+  if (usaAprox(e, f)) return [Object.assign(vacia(), {ap:true})].concat(Array.from({length: efectivasHI(e.objetivo, f)}, vacia));
+  return Array.from({length: seriesSugeridas(e.objetivo, f)}, vacia);
+}
+const efec = L => (L || []).filter(x => !x.ap);
 function seriesSugeridas(objetivo, f){
   const m = String(objetivo||"").match(/^(\d+)\s*×/);
   if (!m) return 1;
@@ -543,6 +571,7 @@ async function init(){
   render();
   setTimeout(() => enviarHoja(), 1500);
   setTimeout(() => sincronizar(), 600);
+  setTimeout(() => enviarMetodoHoja(), 3000);
 }
 
 /* ---------- copia de seguridad ---------- */
@@ -646,7 +675,7 @@ function ultima(nombre, antesDe){
   for (const s of S.sesiones){
     if (antesDe && s.fecha >= antesDe) continue;
     const e = (s.ejercicios||[]).find(x => x.nombre === nombre);
-    if (e && e.series && e.series.length) return {fecha:s.fecha, series:e.series, rir:e.rir};
+    if (e && efec(e.series).length) return {fecha:s.fecha, series:efec(e.series), rir:e.rir};
   }
   return null;
 }
@@ -656,7 +685,7 @@ function records(excluirId){
   for (const s of S.sesiones){
     if (s.id === excluirId) continue;
     for (const e of (s.ejercicios||[])){
-      for (const st of (e.series||[])){
+      for (const st of efec(e.series)){
         if (!st.kg || !st.reps) continue;
         const cur = r[e.nombre];
         if (!cur || st.kg > cur.kg || (st.kg === cur.kg && st.reps > cur.reps)) r[e.nombre] = {kg:st.kg, reps:st.reps, fecha:s.fecha, e1:Math.max(e1rm(st.kg,st.reps), cur?cur.e1:0)};
@@ -666,8 +695,8 @@ function records(excluirId){
   }
   return r;
 }
-const volumen = s => (s.ejercicios||[]).reduce((a,e) => a + (e.series||[]).reduce((b,x) => b + (x.kg||0)*(x.reps||0), 0), 0);
-const nSeries = s => (s.ejercicios||[]).reduce((a,e) => a + (e.series||[]).length, 0);
+const volumen = s => (s.ejercicios||[]).reduce((a,e) => a + efec(e.series).reduce((b,x) => b + (x.kg||0)*(x.reps||0), 0), 0);
+const nSeries = s => (s.ejercicios||[]).reduce((a,e) => a + efec(e.series).length, 0);
 
 /* ---------- vista: HOY ---------- */
 function vHoy(){
@@ -775,14 +804,14 @@ function nuevaDesdePlan(fecha, ses){
   const f = fase(fecha);
   return { fecha, n:ses.n, nombre:ses.nombre, ts:Date.now(), notas:"",
     ejercicios: (ses.ejercicios||[]).map(e => ({ nombre:e.nombre, modo:e.modo||"kg", objetivo:e.objetivo, descanso:e.descanso,
-      series: Array.from({length: seriesSugeridas(e.objetivo, f)}, () => ({kg:"", reps:"", ok:false})), rir:"", notas:"" })) };
+      series: seriesIniciales(e, f), rir:"", notas:"" })) };
 }
 function desdeGuardada(g, ses){
   const plan = ses ? ses.ejercicios : [];
   const ejercicios = (g.ejercicios||[]).map(e => {
     const p = plan.find(x => x.nombre === e.nombre) || {};
     return { nombre:e.nombre, modo:e.modo||p.modo||"kg", objetivo:p.objetivo||e.objetivo||"", descanso:p.descanso||"",
-      series:(e.series||[]).map(s => ({kg: s.kg==null?"":String(s.kg).replace(".",","), reps: s.reps==null?"":String(s.reps), ok:true})),
+      series:(e.series||[]).map(s => Object.assign({kg: s.kg==null?"":String(s.kg).replace(".",","), reps: s.reps==null?"":String(s.reps), ok:true}, s.ap ? {ap:true} : {})),
       rir: e.rir==null?"":String(e.rir), notas:e.notas||"" };
   });
   // añade los ejercicios del plan que no se hicieron, vacíos
@@ -840,24 +869,26 @@ function vEntreno(){
       const solo = e.modo === "tiempo" || e.modo === "cardio";
       const uRep = e.modo==="tiempo" ? "seg" : e.modo==="cardio" ? "min" : "reps";
       const uKg = e.modo==="corporal" ? "+kg" : "kg";
+      let nEf = 0;
       const sets = e.series.map((s, si) => {
         const ph = og.series[si] || null;
+        const etq = s.ap ? "A" : String(++nEf), nom = s.ap ? "aproximación" : `serie ${nEf}`;
         const phKg = ph && ph.kg ? fmt(ph.kg,2) : (e.modo==="corporal"?"0":"");
         const phR = ph && ph.reps!=null ? String(ph.reps) : "";
-        return `<div class="set ${solo?"solo":""} ${s.ok?"ok":""}">
-          <span class="si">${si+1}</span>
-          ${solo?"":`<label class="fld"><input id="kg-${ei}-${si}" data-in="kg" data-e="${ei}" data-s="${si}" inputmode="decimal" value="${esc(s.kg)}" placeholder="${phKg}" aria-label="Kilos serie ${si+1}"><span>${uKg}</span></label><span class="x">×</span>`}
-          <label class="fld"><input id="rp-${ei}-${si}" data-in="reps" data-e="${ei}" data-s="${si}" inputmode="decimal" value="${esc(s.reps)}" placeholder="${phR}" aria-label="${uRep} serie ${si+1}"><span>${uRep}</span></label>
-          <button class="chk" data-act="check" data-e="${ei}" data-s="${si}" aria-label="Serie ${si+1} hecha" aria-pressed="${!!s.ok}">✓</button>
+        return `<div class="set ${solo?"solo":""} ${s.ok?"ok":""} ${s.ap?"ap":""}">
+          <span class="si" title="${s.ap ? "Serie de aproximación" : ""}">${etq}</span>
+          ${solo?"":`<label class="fld"><input id="kg-${ei}-${si}" data-in="kg" data-e="${ei}" data-s="${si}" inputmode="decimal" value="${esc(s.kg)}" placeholder="${phKg}" aria-label="Kilos ${nom}"><span>${uKg}</span></label><span class="x">×</span>`}
+          <label class="fld"><input id="rp-${ei}-${si}" data-in="reps" data-e="${ei}" data-s="${si}" inputmode="decimal" value="${esc(s.reps)}" placeholder="${phR}" aria-label="${uRep} ${nom}"><span>${uRep}</span></label>
+          <button class="chk" data-act="check" data-e="${ei}" data-s="${si}" aria-label="${nom} hecha" aria-pressed="${!!s.ok}">✓</button>
         </div>`; }).join("");
       html += `<section class="card ex">
-        <div class="ex-h">${lib ? `<button class="ej-mini" data-act="verEj" data-n="${esc(e.nombre)}" aria-label="Cómo se hace ${esc(e.nombre)}">${animEj(lib) || fotoEj(lib)}</button>` : ""}<div class="grow"><h3>${esc(e.nombre)}</h3><div class="ex-meta">${esc([e.objetivo, e.descanso ? "descanso " + e.descanso : ""].filter(Boolean).join(" · "))}</div>
+        <div class="ex-h">${lib ? `<button class="ej-mini" data-act="verEj" data-n="${esc(e.nombre)}" aria-label="Cómo se hace ${esc(e.nombre)}">${animEj(lib) || fotoEj(lib)}</button>` : ""}<div class="grow"><h3>${esc(e.nombre)}</h3><div class="ex-meta">${esc([usaAprox(e, f) && /^\d+\s*×/.test(e.objetivo||"") ? String(e.objetivo).replace(/^\d+\s*×/, `1 aprox + ${efectivasHI(e.objetivo, f)} ×`) : e.objetivo, e.descanso ? "descanso " + e.descanso : ""].filter(Boolean).join(" · "))}</div>
             <button class="lnk-btn" data-act="exCambiar" data-e="${ei}">⇄ Cambiar ejercicio</button></div>
           <button class="iconbtn" data-act="exQuitar" data-e="${ei}" aria-label="Quitar ${esc(e.nombre)} de esta sesión">✕</button></div>
         ${objetivoHTML(e, og)}
         ${sets}
         <div class="row between">
-          <div class="row"><button class="btn sm" data-act="addSet" data-e="${ei}">+ Serie</button>${e.series.length>1?`<button class="btn sm ghost" data-act="delSet" data-e="${ei}">− Serie</button>`:""}</div>
+          <div class="row"><button class="btn sm" data-act="addSet" data-e="${ei}">+ Serie</button>${nEf>1?`<button class="btn sm ghost" data-act="delSet" data-e="${ei}">− Serie</button>`:""}</div>
           ${solo?"":`<label class="row small muted" style="gap:6px">RIR <select class="tx" style="width:auto;padding:6px 8px" data-in="rir" data-e="${ei}" id="rir-${ei}"><option value="">–</option>${[0,1,2,3,4].map(r => `<option ${String(e.rir)===String(r)?"selected":""}>${r}</option>`).join("")}</select></label>`}
         </div>
         <input class="tx small" id="nt-${ei}" data-in="notas" data-e="${ei}" value="${esc(e.notas)}" placeholder="Notas (sensaciones, ajustes de máquina…)">
@@ -887,7 +918,7 @@ function historialHTML(){
 async function guardarSesion(){
   const ed = S.ed; if (!ed) return;
   const ejercicios = ed.ejercicios.map(e => {
-    const series = e.series.map(s => ({kg:num(s.kg), reps:num(s.reps)})).filter(s => s.kg!=null || s.reps!=null);
+    const series = e.series.map(s => Object.assign({kg:num(s.kg), reps:num(s.reps)}, s.ap ? {ap:1} : {})).filter(s => s.kg!=null || s.reps!=null);
     const o = {nombre:e.nombre, modo:e.modo, series};
     if (num(e.rir)!=null) o.rir = num(e.rir);
     if (e.notas && e.notas.trim()) o.notas = e.notas.trim();
@@ -1200,7 +1231,7 @@ const opts = (obj, sel) => Object.entries(obj).map(([v,l]) => `<option value="${
 const optsL = (arr, sel) => arr.map(v => `<option ${v===sel?"selected":""}>${esc(v)}</option>`).join("");
 
 function vAjustes(){
-  if (!S.cfgEd) { S.cfgEd = clone({kcal:obj().kcal, p:obj().p, c:obj().c, g:obj().g, aguaL:obj().aguaL, vasoMl:obj().vasoMl, pasos:obj().pasos, altura:obj().altura, edad:obj().edad, sexo:obj().sexo, inicio:obj().inicio, nombre:obj().nombre, ciclo:ciclo(), suples:obj().suples||[], comidas:comidas(), recordatorios:rec()}); S.cfgDirty = false; }
+  if (!S.cfgEd) { S.cfgEd = clone({kcal:obj().kcal, p:obj().p, c:obj().c, g:obj().g, aguaL:obj().aguaL, vasoMl:obj().vasoMl, pasos:obj().pasos, altura:obj().altura, edad:obj().edad, sexo:obj().sexo, inicio:obj().inicio, metodoTipo:(obj().metodo||{}).tipo||"clasico", metodoDesde:(obj().metodo||{}).desde||5, nombre:obj().nombre, ciclo:ciclo(), suples:obj().suples||[], comidas:comidas(), recordatorios:rec()}); S.cfgDirty = false; }
   const o = S.cfgEd;
   const kc = (num(o.p)||0)*4 + (num(o.c)||0)*4 + (num(o.g)||0)*9;
   const ip = S.importPend;
@@ -1258,6 +1289,11 @@ function vAjustes(){
         <label class="lb">Semanas del plan<input class="tx" id="ob-sem" data-c="semanas" inputmode="numeric" value="${esc(o.ciclo.semanas)}"></label>
       </div>
       <label class="lb">Inicio (lunes de la semana 1)<input class="tx" type="date" id="ob-ini" data-c="inicio" value="${esc(o.inicio)}"></label>
+      <div class="grid2">
+        <label class="lb">Método de series<select class="tx" id="ob-met" data-c="metodoTipo">${opts({clasico:"Clásico (series indicadas)", hi:"Alta intensidad (aprox. + 1-3 al fallo)"}, o.metodoTipo)}</select></label>
+        <label class="lb">Desde la semana<input class="tx" id="ob-metd" data-c="metodoDesde" inputmode="numeric" value="${esc(o.metodoDesde)}"></label>
+      </div>
+      <span class="muted small">Alta intensidad: antes de cada ejercicio, 1 serie de aproximación ligera (FIT-ALL calcula el peso) y después 1-3 series efectivas al fallo o a 1 rep. Semana 1 del ciclo a 1 rep del fallo, semanas 2-3 al fallo, semana 4 de descarga.</span>
       <span class="eyebrow" style="margin-top:6px">Semanas de cada ciclo (${o.ciclo.fases.length})</span>
       ${fases}
       <button class="btn sm" data-act="cfgAdd" data-l="fases">+ Añadir semana al ciclo</button>
@@ -1847,7 +1883,12 @@ const pendHoja = () => lsGet("fitall_hoja_pend") || {sesiones:{}, medidas:{}, di
 const nPend = () => { const p = pendHoja(); return Object.keys(p.sesiones).length + Object.keys(p.medidas).length + Object.keys(p.dieta).length; };
 function payloadSesion(s, vaciar){
   const fz = fase(s.fecha); if (!fz) return null;
-  let ejercicios = (s.ejercicios || []).map(e => ({nombre:e.nombre, series:(e.series||[]).map(x => ({kg:x.kg ?? null, reps:x.reps ?? null})), rir:e.rir ?? null, notas:e.notas || ""}));
+  const sx = x => ({kg:x.kg ?? null, reps:x.reps ?? null});
+  let ejercicios = (s.ejercicios || []).map(e => {
+    const L = e.series || [], ap = L.find(x => x.ap);
+    const series = fz.hi && (ap || e.modo === "kg" || e.modo === "corporal") ? [ap ? sx(ap) : {kg:null, reps:null}].concat(efec(L).map(sx)) : L.map(sx);
+    return {nombre:e.nombre, series, rir:e.rir ?? null, notas:e.notas || ""};
+  });
   if (vaciar){ const pl = (S.plan||[]).find(p => p.n === s.n); ejercicios = ((pl && pl.ejercicios) || s.ejercicios || []).map(e => ({nombre:e.nombre, series:[], rir:null, notas:""})); }
   return {semana:fz.semana, n:s.n, nombre:s.nombre, fecha:s.fecha, ejercicios};
 }
@@ -1898,6 +1939,43 @@ async function enviarHoja(manual){
     return null;
   } finally { enviando = false; }
 }
+/* ---------- hoja: pestañas Sem según el método de series ---------- */
+function textoFase(fz){ return `Ciclo ${fz.ciclo}, semana ${fz.sc}  ·  ${fz.nombre} · ${fz.rir} · ${fz.series}`; }
+function payloadMetodo(){
+  const m = obj().metodo || {}, C = ciclo(), semanas = {};
+  if (m.tipo !== "hi") return null;
+  for (let n = Math.max(1, +m.desde || 1); n <= C.semanas; n++){
+    const fz = fase(addDias(obj().inicio, (n - 1) * 7)); if (!fz || !fz.hi) continue;
+    const objetivos = {};
+    (S.plan || []).forEach(ses => (ses.ejercicios || []).forEach(e => {
+      if (!usaAprox(e, fz)) return;
+      const r = rangoReps(e.objetivo), rango = r ? (r.hi !== r.lo ? `${r.lo}-${r.hi}` : `${r.lo}`) : "";
+      const suf = fz.hiFase === "descarga" ? " (3-4 de margen)" : fz.hiFase === "adapt" ? " (a 1 del fallo)" : " al fallo";
+      objetivos[e.nombre] = `1 aprox + ${efectivasHI(e.objetivo, fz)}${rango ? " × " + rango : ""}${suf}`;
+    }));
+    semanas[n] = {fase: textoFase(fz), objetivos};
+  }
+  return {desde: +m.desde || 1, semanas};
+}
+async function enviarMetodoHoja(manual){
+  const url = hojaUrl(), d = payloadMetodo();
+  if (!url || !d){ if (manual) toast(url ? "Elige el método «Alta intensidad» en Ajustes → Plan." : "Primero conecta tu hoja de Google."); return; }
+  const clave = hashTxt(JSON.stringify(d));
+  if (!manual && lsGet("fitall_hoja_metodo") === clave) return;
+  if (!navigator.onLine){ if (manual) toast("Sin conexión: inténtalo cuando tengas internet."); return; }
+  try {
+    const r = await fetch(url, {method:"POST", body:JSON.stringify(Object.assign({clave:claveHoja(), accion:"metodo"}, d)), headers:{"Content-Type":"text/plain;charset=utf-8"}});
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || "error");
+    if (j.metodo == null) throw new Error("antiguo");
+    lsSet("fitall_hoja_metodo", clave); lsSet("fitall_hoja_metodo_err", null);
+    if (manual) toast(`Hoja preparada: ${j.metodo} semanas con aproximación + efectivas.`);
+  } catch(e){
+    lsSet("fitall_hoja_metodo_err", String(e && e.message || e));
+    if (manual) toast(String(e && e.message) === "antiguo" ? "Tu hoja tiene el código antiguo: actualízalo (mira «Tu hoja de Google» en Ajustes)." : "No pude preparar la hoja. Lo reintento más tarde.");
+  }
+  if (S.tab === "ajustes") pedirRender();
+}
 function enviarTodo(){
   if (!hojaUrl()) { toast("Primero pega la dirección de tu hoja."); return; }
   const p = {sesiones:{}, medidas:{}, dieta:{}};
@@ -1923,6 +2001,9 @@ function hojaHTML(){
     ${estado}${errTxt}${fallos}
     <label class="lb">Dirección de la hoja (la que acaba en /exec)<input class="tx" id="hoja-url" type="url" inputmode="url" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(url)}"></label>
     <div class="row"><button class="btn ${url ? "" : "pri"}" data-act="hojaGuardar">${url ? "Cambiar dirección" : "Conectar"}</button>${url ? `<button class="btn pri" data-act="hojaTodo">Enviar todo ahora</button>` : ""}</div>
+    ${url && (obj().metodo || {}).tipo === "hi" ? `<div class="sec" style="gap:6px"><span class="small">Método de alta intensidad: desde la semana ${esc((obj().metodo || {}).desde)}, las columnas S1-S4 pasan a ser <b>Aprox</b> y <b>E1-E3</b> (efectivas), el objetivo de cada ejercicio cambia y el volumen solo cuenta las efectivas.</span>
+      ${lsGet("fitall_hoja_metodo_err") === "antiguo" ? `<div class="hint down">Tu hoja tiene el código antiguo. Copia el código de abajo, pégalo en Apps Script y crea una «Nueva versión» (Implementar → Gestionar implementaciones → ✏️ → Nueva versión → Implementar).</div>` : lsGet("fitall_hoja_metodo") ? `<div class="hint up">Tu hoja ya está preparada para el método.</div>` : ""}
+      <button class="btn sm" data-act="hojaMetodo">Preparar mi hoja para el método</button></div>` : ""}
     <details ${url ? "" : "open"}><summary class="small"><b>Cómo conectarla (una sola vez, mejor desde el ordenador)</b></summary>
       <ol class="small" style="padding-left:20px;margin:8px 0;display:flex;flex-direction:column;gap:6px;max-width:62ch">
         <li>Abre tu hoja «Registro de entrenamiento · Manuel» en el ordenador.</li>
@@ -2007,6 +2088,7 @@ async function guardarCfg(){
     pasos: Math.min(50000, Math.max(1000, Math.round(num(String(o.pasos||"").replace(/\./g, "")) || 10000))),
     altura: Math.min(230, Math.max(120, Math.round(num(o.altura) || 170))), edad: Math.min(99, Math.max(14, Math.round(num(o.edad) || 28))), sexo: o.sexo === "mujer" ? "mujer" : "hombre",
     inicio: o.inicio || OBJ_DEF.inicio, nombre: (o.nombre||"").trim(),
+    metodo: {tipo: o.metodoTipo === "hi" ? "hi" : "clasico", desde: Math.max(1, Math.round(num(o.metodoDesde) || 5))},
     ciclo: {semanas: sem, fases: o.ciclo.fases.map(f => ({nombre:(f.nombre||"").trim()||"Semana", rir:(f.rir||"").trim(), series:(f.series||"").trim(), ajuste:f.ajuste||"igual"}))},
     suples: o.suples.filter(s => (s.nombre||"").trim()).map(s => ({k: s.k || slug(s.nombre) || nuevoId(), nombre:s.nombre.trim(), det:(s.det||"").trim()})),
     comidas: o.comidas.map(c => (c||"").trim()).filter(Boolean),
@@ -2016,6 +2098,7 @@ async function guardarCfg(){
   S.obj = d; S.cfgEd = null; S.cfgDirty = false; render();
   await escribir("config/objetivos", d);
   toast("Ajustes guardados");
+  enviarMetodoHoja();
 }
 function marcarCfg(){
   S.cfgDirty = true;
@@ -2123,7 +2206,7 @@ function seriesPorMusculo(desde, hasta){
   for (const s of S.sesiones){
     if (s.fecha < desde || s.fecha > hasta) continue;
     for (const e of (s.ejercicios||[])){
-      const n = (e.series||[]).filter(x => x.reps != null || x.kg != null).length;
+      const n = efec(e.series).filter(x => x.reps != null || x.kg != null).length;
       if (!n) continue;
       const lib = bibEj(e.nombre);
       if (!lib){ sin.add(e.nombre); continue; }
@@ -2141,7 +2224,7 @@ function fuerzaPorMusculo(){
   S.sesiones.slice().sort((a,b) => a.fecha < b.fecha ? -1 : 1).forEach(s => {
     if (s.fecha < desde) return;
     (s.ejercicios||[]).forEach(e => {
-      const v = (e.series||[]).filter(x => x.kg && x.reps); if (!v.length) return;
+      const v = efec(e.series).filter(x => x.kg && x.reps); if (!v.length) return;
       (porEj[e.nombre] = porEj[e.nombre] || []).push({f:s.fecha, v:Math.max(...v.map(x => e1rm(x.kg, x.reps)))});
     });
   });
@@ -2391,7 +2474,10 @@ function bibAplicar(nombres){
   if (d.tipo === "ent" && S.entEd){
     nombres.forEach(n => { const m = modoDe(n); S.entEd.ejercicios.push({nombre:n, objetivo:objetivoDef(m), descanso: m === "cardio" ? "" : "90 s", modo:m}); });
   } else if (d.tipo === "ed" && S.ed){
-    nombres.forEach(n => { const m = modoDe(n), k = m === "cardio" ? 1 : 3; S.ed.ejercicios.push({nombre:n, modo:m, objetivo:"", descanso: m === "cardio" ? "" : "90 s", series:Array.from({length:k}, () => ({kg:"", reps:"", ok:false})), rir:"", notas:""}); });
+    const fz = fase(S.ed.fecha);
+    nombres.forEach(n => { const m = modoDe(n), k = m === "cardio" ? 1 : 3;
+      const series = usaAprox({modo:m}, fz) ? seriesIniciales({modo:m, objetivo:"3 × 8-12"}, fz) : Array.from({length:k}, () => ({kg:"", reps:"", ok:false}));
+      S.ed.ejercicios.push({nombre:n, modo:m, objetivo:"", descanso: m === "cardio" ? "" : "90 s", series, rir:"", notas:""}); });
     guardarBorrador();
   } else if (d.tipo === "edCambio" && S.ed && S.ed.ejercicios[d.i]){
     const e = S.ed.ejercicios[d.i]; e.nombre = nombres[0]; e.modo = modoDe(nombres[0]); guardarBorrador();
@@ -2497,7 +2583,7 @@ function referencia(nombre, fecha){
     if (s.fecha >= fecha) continue;
     const e = (s.ejercicios||[]).find(x => x.nombre === nombre);
     if (!e) continue;
-    const series = (e.series||[]).filter(x => x.reps != null || x.kg != null);
+    const series = efec(e.series).filter(x => x.reps != null || x.kg != null);
     if (!series.length) continue;
     const r = {fecha:s.fecha, series, rir:e.rir};
     const fz = fase(s.fecha);
@@ -2506,35 +2592,55 @@ function referencia(nombre, fecha){
   }
   return reserva;
 }
+const BASICO_BARRA = ["sentadilla","peso-muerto","press-banca","press-inclinado","press-militar","remo-barra","press-cerrado"];
 function objetivoHoy(e, fecha){
-  const n = Math.max(1, (e.series||[]).length);
-  const fz = fase(fecha);
-  const fs = !fz || fz.fuera ? "normal" : fz.ajuste === "descarga" ? "descarga" : fz.ajuste === "menos1" ? "adapt" : "normal";
-  const r = rangoReps(e.objetivo), lo = r ? r.lo : null, hi = r ? r.hi : null;
+  const L = e.series || [];
+  const n = Math.max(1, efec(L).length);
+  const fz = fase(fecha), hi = !!(fz && fz.hi);
+  const fs = !fz || fz.fuera ? "normal" : fz.ajuste === "descarga" ? "descarga" : (fz.ajuste === "menos1" && !hi) ? "adapt" : "normal";
+  const r = rangoReps(e.objetivo), lo = r ? r.lo : null, hi_ = r ? r.hi : null;
   const ref = referencia(e.nombre, fecha);
-  const out = {tipo:"", fase:fs, ref, series:[], kg:null, W:null, lo, hi};
+  const out = {tipo:"", fase:fs, ai:hi, aiFase: fz && fz.hiFase, ref, series:[], kg:null, W:null, lo, hi:hi_, ap:null, nEf:n};
   const lista = f => Array.from({length:n}, (_, i) => f(i));
+  const montar = (eff, ap) => { let k = 0; out.ap = ap || null; out.series = L.length ? L.map(s => s.ap ? (ap || {kg:null, reps:null}) : (eff[Math.min(k++, eff.length - 1)])) : eff; };
+  const aprox = kg => {
+    if (!L.some(s => s.ap)) return null;
+    if (e.modo === "corporal") return {kg:0, reps: Math.max(3, Math.round((lo || 8) / 2))};
+    if (!kg) return {kg:null, reps: lo && lo >= 10 ? 10 : 6};
+    const lib = bibEj(e.nombre), paso = kg >= 20 ? 2.5 : 1;
+    let a = Math.floor(kg * (lo && lo >= 10 ? 0.5 : 0.6) / paso) * paso;
+    if (lib && lib.e === "Barra") a = Math.max(20, a);
+    return {kg: Math.max(paso, a), reps: lo && lo >= 10 ? 10 : 6};
+  };
   if (!ref){
-    out.tipo = "primera"; out.series = lista(() => ({kg:null, reps:lo})); return out;
+    out.tipo = "primera"; montar(lista(() => ({kg:null, reps:lo})), aprox(null)); return out;
   }
   const ser = ref.series, de = i => ser[Math.min(i, ser.length - 1)];
   if (e.modo === "cardio"){
-    out.tipo = "cardio"; out.series = lista(i => ({kg:null, reps:de(i).reps})); return out;
+    out.tipo = "cardio"; montar(lista(i => ({kg:null, reps:de(i).reps}))); return out;
   }
   if (e.modo === "tiempo"){
-    const todas = hi != null && ser.every(s => (s.reps||0) >= hi);
+    const todas = hi_ != null && ser.every(s => (s.reps||0) >= hi_);
     out.tipo = fs === "descarga" ? "descarga" : todas ? "subir" : "mantener";
-    out.series = lista(i => { const b = de(i).reps || 0;
-      return {kg:null, reps: fs === "descarga" ? (lo || b) : todas ? b + 5 : (hi != null ? Math.max(lo, Math.min(hi, b + 5)) : b + 5)}; });
+    montar(lista(i => { const b = de(i).reps || 0;
+      return {kg:null, reps: fs === "descarga" ? (lo || b) : todas ? b + 5 : (hi_ != null ? Math.max(lo, Math.min(hi_, b + 5)) : b + 5)}; }));
     return out;
   }
   // kg y peso corporal (+lastre)
   const W = Math.max(0, ...ser.map(s => s.kg || 0));
   const enW = ser.filter(s => (s.kg || 0) === W);
-  // las series más ligeras de aproximación no cuentan: basta con que todas las del peso de trabajo lleguen al máximo
-  const todasTop = hi != null && enW.length >= Math.min(2, ser.length) && enW.every(s => (s.reps||0) >= hi);
-  const malas = lo != null ? enW.filter(s => (s.reps||0) < lo).length : 0;
-  const flojo = lo != null && malas > enW.length / 2 && enW.some(s => (s.reps||0) <= lo - 2);
+  let todasTop, flojo;
+  if (hi){
+    // Al fallo: manda la primera serie efectiva con el peso de trabajo
+    const p = enW[0] || {};
+    todasTop = hi_ != null && (p.reps || 0) >= hi_ && enW.every(s => (s.reps || 0) >= (lo || 0));
+    flojo = lo != null && (p.reps || 0) <= lo - 2;
+  } else {
+    // las series más ligeras de aproximación no cuentan: basta con que todas las del peso de trabajo lleguen al máximo
+    todasTop = hi_ != null && enW.length >= Math.min(2, ser.length) && enW.every(s => (s.reps||0) >= hi_);
+    const malas = lo != null ? enW.filter(s => (s.reps||0) < lo).length : 0;
+    flojo = lo != null && malas > enW.length / 2 && enW.some(s => (s.reps||0) <= lo - 2);
+  }
   const inc = incremento(e.nombre, W, e.modo);
   const repsUlt = i => de(i).reps || 0;
   let kg = W, reps;
@@ -2551,33 +2657,45 @@ function objetivoHoy(e, fecha){
     out.tipo = "adapt"; reps = i => lo != null ? lo : repsUlt(i);
   } else {
     out.tipo = "mantener";
-    reps = i => hi != null ? Math.max(lo, Math.min(hi, repsUlt(i) + 1)) : repsUlt(i);
+    reps = i => hi_ != null ? Math.max(lo, Math.min(hi_, repsUlt(i) + 1)) : repsUlt(i);
   }
-  out.W = W; out.kg = (e.modo === "kg" && !W) ? null : kg; out.inc = inc;
-  out.series = lista(i => ({kg: (e.modo === "kg" && !W) ? null : kg, reps: reps(i)}));
+  const sinKg = e.modo === "kg" && !W;
+  out.W = W; out.kg = sinKg ? null : kg; out.inc = inc;
+  montar(lista(i => ({kg: sinKg ? null : kg, reps: reps(i)})), aprox(sinKg ? null : kg));
   return out;
 }
 function objetivoHTML(e, o){
   const kgTxt = k => e.modo === "corporal" ? (k ? `+${fmt(k,2)} kg de lastre` : "tu peso") : `${fmt(k,2)} kg`;
   const u = e.modo === "tiempo" ? "s" : e.modo === "cardio" ? "min" : "reps";
-  const reps = o.series.map(s => s.reps);
+  const efs = o.ap ? efec(e.series).map((_, i) => o.series[e.series.findIndex(x => !x.ap) + i]).filter(Boolean) : o.series;
+  const reps = efs.map(s => s.reps);
   const repsTxt = reps.every(x => x === reps[0]) ? `${reps[0] ?? "–"} ${u}` : `${reps.join("/")} ${u}`;
   const ult = o.ref ? `<div class="muted small">Última vez (${ddmm(o.ref.fecha)}): ${esc(o.ref.series.map(s => s.kg ? `${fmt(s.kg,2)}×${s.reps??"–"}` : `${s.reps??"–"}`).join(" · "))}${o.ref.rir!=null&&o.ref.rir!==""?` · RIR ${esc(o.ref.rir)}`:""}</div>` : "";
-  if (o.tipo === "primera") return `<div class="hint"><b>Primera vez.</b> Elige un peso con el que te queden ${esc(fase(S.ed.fecha)?.rir || "2 reps de margen")}${o.lo ? ` haciendo ${o.lo}${o.hi && o.hi !== o.lo ? "-" + o.hi : ""} ${u}` : ""}. A partir de la próxima, FIT-ALL te dirá qué peso poner.</div>`;
+  const lib = bibEj(e.nombre);
+  const fallo = o.ai && o.aiFase !== "descarga" && o.aiFase !== "adapt" && e.modo !== "cardio";
+  const barra = fallo && lib && BASICO_BARRA.includes(lib.f) && (lib.e === "Barra" || lib.e === "Smith");
+  const aviso = o.ai && e.modo !== "cardio" && e.modo !== "tiempo"
+    ? `<div class="muted small">${o.ap ? "<b>A</b> = aproximación: ligera, sin cansarte. " : ""}${o.aiFase === "descarga" ? "Esta semana nada al fallo." : o.aiFase === "adapt" ? "Las efectivas, a 1 rep del fallo: aprende a reconocerlo." : barra ? "Básico con barra: para 1 rep antes de que se rompa la técnica (o usa los seguros)." : "Las efectivas, hasta el fallo: hasta que no salga otra rep con buena técnica."}</div>` : "";
+  if (o.tipo === "primera") return `<div class="hint"><b>Primera vez.</b> ${o.ai ? `Haz una serie ligera de aproximación y después busca un peso con el que llegues al fallo` : `Elige un peso con el que te queden ${esc(fase(S.ed.fecha)?.rir || "2 reps de margen")}`}${o.lo ? ` haciendo ${o.lo}${o.hi && o.hi !== o.lo ? "-" + o.hi : ""} ${u}` : ""}. A partir de la próxima, FIT-ALL te dirá qué peso poner.</div>${aviso}`;
   if (o.tipo === "cardio") return `<div class="hint"><b>Hoy toca:</b> ${esc(e.objetivo || repsTxt)}</div>${ult}`;
-  const n = o.series.length;
-  const cab = o.kg != null || e.modo === "corporal" ? `${n} × ${kgTxt(o.kg)} × ${repsTxt}` : `${n} × ${repsTxt}`;
+  const n = efs.length;
+  const ef = o.kg != null || e.modo === "corporal" ? `${n} × ${kgTxt(o.kg)} × ${repsTxt}` : `${n} × ${repsTxt}`;
+  const apTxt = !o.ap ? "" : e.modo === "corporal" ? `1 aprox. de ${o.ap.reps} reps fáciles + ` : o.ap.kg ? `1 aprox. ${kgTxt(o.ap.kg)} × ${o.ap.reps} + ` : `1 aprox. + `;
+  const cab = apTxt + ef + (fallo ? (barra ? " (a 1 del fallo)" : " al fallo") : "");
   const sinKg = e.modo === "kg" && !o.W ? " La última vez no apuntaste el peso: apúntalo hoy y te diré cuándo subir." : "";
   let por = "", cls = "";
   const W = o.W != null ? kgTxt(o.W) : "";
+  const hiN = o.hi;
+  const loN = o.lo;
   if (o.tipo === "subir"){ cls = "up";
-    por = e.modo === "tiempo" ? `Aguantaste ${o.hi} s en todas las series: suma 5 s.` : `Completaste ${o.hi} reps en todas las series con ${W}: ${e.modo === "corporal" && !o.W ? "añade lastre" : `sube ${fmt(o.inc,2)} kg`} y vuelve a ${o.lo} reps.`; }
-  else if (o.tipo === "bajar"){ cls = "down"; por = `La última vez te quedaste lejos de ${o.lo} reps con ${W}: baja un poco, haz ${o.lo} bien y vuelve a subir.`; }
+    por = e.modo === "tiempo" ? `Aguantaste ${hiN} s en todas las series: suma 5 s.`
+      : `${o.ai ? `Llegaste a ${hiN} reps en la primera serie efectiva` : `Completaste ${hiN} reps en todas las series`} con ${W}: ${e.modo === "corporal" && !o.W ? "añade lastre" : `sube ${fmt(o.inc,2)} kg`} y vuelve a ${loN} reps.`; }
+  else if (o.tipo === "bajar"){ cls = "down"; por = `La última vez te quedaste lejos de ${loN} reps con ${W}: baja un poco, haz ${loN} bien y vuelve a subir.`; }
   else if (o.tipo === "descarga") por = `Semana de descarga: ${e.modo === "kg" && o.W ? "algo menos de peso (≈10 %), " : ""}menos series y que te sobren 3-4 reps.`;
-  else if (o.tipo === "adapt") por = `Semana de adaptación: mismo peso, ${o.lo} reps con 3 de margen y cuidando la técnica.`;
-  else if (o.hi != null) por = e.modo === "tiempo" ? `Intenta 5 s más que la última vez, hasta ${o.hi} s.` : `Mismo peso: intenta una rep más que la última vez, hasta llegar a ${o.hi} en todas las series.`;
+  else if (o.tipo === "adapt") por = `Semana de adaptación: mismo peso, ${loN} reps con 3 de margen y cuidando la técnica.`;
+  else if (hiN != null) por = e.modo === "tiempo" ? `Intenta 5 s más que la última vez, hasta ${hiN} s.` : `Mismo peso: intenta una rep más que la última vez, hasta llegar a ${hiN}${o.ai ? " en la primera efectiva" : " en todas las series"}.`;
   else por = "Repite lo de la última vez.";
-  return `<div class="hint obj ${cls}"><b>Hoy toca: ${esc(cab)}</b><span>${esc(por + sinKg)}</span></div>${ult}`;
+  return `<div class="hint obj ${cls}"><b>Hoy toca: ${esc(cab)}</b><span>${esc(por + sinKg)}</span></div>${aviso}${ult}`;
 }
 
 /* ---------- pasos ---------- */
@@ -2591,7 +2709,7 @@ function gastoDia(f){
   let entreno = 0;
   S.sesiones.filter(s => s.fecha === f).forEach(s => (s.ejercicios||[]).forEach(e => {
     if (e.modo === "cardio") entreno += (e.series||[]).reduce((a, x) => a + (x.reps || 0), 0) * 7;
-    else entreno += (e.series||[]).length * 8;
+    else entreno += efec(e.series).length * 8 + ((e.series||[]).length - efec(e.series).length) * 4;
   }));
   entreno = Math.round(entreno);
   return {base, andar, entreno, total: base + andar + entreno, pasos};
@@ -2894,12 +3012,12 @@ view.addEventListener("click", async e => {
       if (st.reps === "" && ph && ph.reps!=null) st.reps = String(ph.reps);
       if (st.reps === "" && st.kg === ""){ toast("Escribe los kilos y las repeticiones de la serie."); return; }
       st.ok = true;
-      iniciarTimer(descansoSeg(ex.descanso), ex.nombre);
+      iniciarTimer(st.ap ? 60 : descansoSeg(ex.descanso), st.ap ? ex.nombre + " (aproximación)" : ex.nombre);
     } else st.ok = false;
     guardarBorrador(); render();
   }
   else if (a === "addSet" && S.ed){ const ex = S.ed.ejercicios[+b.dataset.e]; ex.series.push({kg:"",reps:"",ok:false}); guardarBorrador(); render(); }
-  else if (a === "delSet" && S.ed){ const ex = S.ed.ejercicios[+b.dataset.e]; if (ex.series.length>1) ex.series.pop(); guardarBorrador(); render(); }
+  else if (a === "delSet" && S.ed){ const ex = S.ed.ejercicios[+b.dataset.e]; if (efec(ex.series).length>1) ex.series.pop(); guardarBorrador(); render(); }
   else if (a === "guardarSesion") guardarSesion();
   else if (a === "cerrarEd"){ clearTimeout(draftT); if (S.ed) lsSet(`borrador_${S.ed.fecha}_${S.ed.n}`, null); S.ed = null; render(); }
   else if (a === "borrarSesion" && S.ed && S.ed.origen){
@@ -2938,6 +3056,7 @@ view.addEventListener("click", async e => {
     } catch(e){ toast("No pude conectar con esa dirección. Revisa que la copiaste entera y que en «Quién tiene acceso» pusiste «Cualquier usuario»."); }
   }
   else if (a === "hojaTodo") enviarTodo();
+  else if (a === "hojaMetodo") enviarMetodoHoja(true);
   else if (a === "syncActivar") activarSync();
   else if (a === "syncAhora") sincronizar(true);
   else if (a === "hojaComprobar"){
