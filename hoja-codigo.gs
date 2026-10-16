@@ -234,8 +234,9 @@ function prepararMetodo(ss, d) {
       if (cVol >= 0 && pares.length) {
         var fila = f + 1;
         var suma = pares.map(function (p) { return "N(" + letra(c[p[0]]) + fila + ")*N(" + letra(c[p[1]]) + fila + ")"; }).join("+");
-        var rango = letra(c[pares[0][0]]) + fila + ":" + letra(c[pares[pares.length - 1][1]]) + fila;
-        sh.getRange(fila, cVol + 1).setFormula("=IF(COUNT(" + rango + ")=0,\"\"," + suma + ")");
+        // Sin comas ni comillas: funciona igual con la hoja en español o en inglés.
+        // El formato oculta el 0 de las filas que aún están vacías.
+        sh.getRange(fila, cVol + 1).setFormula("=" + suma).setNumberFormat("#,##0;-#,##0;");
       }
     }
     hechas++;
