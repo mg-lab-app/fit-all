@@ -1078,7 +1078,7 @@ function vDieta(){
 }
 function alimentoPorNombre(n){ n = String(n||"").trim().toLowerCase(); return S.alimentos.find(a => a.nombre.toLowerCase() === n); }
 const ICONO_BARRAS = `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" style="vertical-align:-3px"><path fill="currentColor" d="M3 5h2v14H3zM7 5h1v14H7zM10 5h2v14h-2zM14 5h1v14h-1zM17 5h1v14h-1zM20 5h1v14h-1z"/></svg>`;
-const AYUDA_PREV = "Pon cuánto si lo sabes («dos huevos», «medio plato», «200 g de pollo»). Si no, cuento una ración normal.";
+const AYUDA_PREV = "Pon cuánto si lo sabes («dos huevos», «un filete», «un poco de arroz», «medio plato», «200 g de pollo»). Si no, cuento una ración normal.";
 function actualizarPrevia(){
   const prev = $("#al-prev"), libre = $("#al-libre"), inp = $("#al-nombre");
   if (!prev || !inp) return;
@@ -1093,7 +1093,7 @@ function actualizarPrevia(){
     ${r.partes.map(x => `<div class="row between"><span>${esc(x.cant ? x.cant + " · " : "")}<b>${esc(x.nombre)}</b>${x.gramos!=null ? ` <span class="muted">(${fmt(x.gramos)} ${esc(x.u)})</span>` : ""}</span><span class="muted">${fmt(x.kcal)} kcal</span></div>`).join("")}
     <div class="row between estim-tot"><b>Total ≈ ${fmt(t.kcal)} kcal</b><span class="muted small">P ${fmt(t.p)} g · H ${fmt(t.c)} g · G ${fmt(t.g)} g</span></div>
     ${r.noEntiendo.length ? `<div class="hint">No he entendido: «${esc(r.noEntiendo.join("», «"))}». No cuenta en el total. Prueba a escribirlo de otra forma.</div>` : ""}
-    <span class="muted small">Es una estimación con raciones normales de casa. Si ha sido más o menos, dilo («plato grande», «medio plato»).</span>`;
+    <span class="muted small">Es una estimación con raciones normales de casa. Si ha sido más o menos, dilo («un poco», «plato grande», «medio plato», «150 g»).</span>`;
 }
 function guardarDia(f, d){
   S.diario[f] = d;
@@ -1342,20 +1342,28 @@ const PORC_DEF = {plato:250, cazo:200, racion:150, taza:200, tazon:300, vaso:200
   pechuga:150, filete:120, muslo:110, cuarto:250, chuleta:120, rodaja:20, loncha:15, taco:10, cucharada:10, cucharadita:4, punado:30,
   lata:70, bolsa:40, onza:10, tableta:100, copa:150, cana:200, tercio:330, botellin:200, quinto:200, jarra:500, botella:500, brick:200,
   chorreon:10, chorrito:5, sobre:8, cacito:30, scoop:30, porcion:110, pincho:100, bola:60, barra:250, rebanada:30, guarnicion:100,
-  bandeja:300, tarrina:100, cazuela:150, racimo:150, chupito:40, tostada:50};
+  bandeja:300, tarrina:100, cazuela:150, racimo:150, chupito:40, tostada:50, litro:1000, kilo:1000, manojo:250, bote:250, tira:15,
+  cubo:100, culin:100, medallon:60, brocheta:80, sorbo:20, mordisco:25, bocado:25};
 const PORC_SIN = {cuchara:"cucharada", cucharon:"cazo", cuenco:"bol", unidad:"ud", uds:"ud", pedazo:"trozo", cacho:"trozo", tajada:"trozo",
-  lonja:"loncha", paquete:"bolsa", paquetito:"bolsa", plat:"plato", lonchita:"loncha", trocito:"trozo", vasito:"vaso", platito:"plato", platazo:"plato"};
+  lonja:"loncha", paquete:"bolsa", paquetito:"bolsa", plat:"plato", lonchita:"loncha", trocito:"trozo", vasito:"vaso", platito:"plato", platazo:"plato",
+  l:"litro", lt:"litro", kilos:"kilo", rodajita:"rodaja", cucharon:"cazo", taper:"racion", tupper:"racion", tuper:"racion"};
 const NUMS = {un:1, una:1, uno:1, dos:2, tres:3, cuatro:4, cinco:5, seis:6, siete:7, ocho:8, nueve:9, diez:10, once:11, doce:12, quince:15, veinte:20, medio:0.5, media:0.5};
 const GRANDE = new Set(["grande","grandes","gordo","gorda","colmado","colmada","lleno","llena","buen","buena","enorme","platazo"]);
-const PEQUE = new Set(["pequeno","pequena","pequenos","pequenas","chico","chica","poco","poca","pocos","pocas","platito","trocito","vasito","mini"]);
+const PEQUE = new Set(["pequeno","pequena","pequenos","pequenas","chico","chica","platito","trocito","vasito","mini","pequenito","pequenita"]);
+// «un poco de…»: parte de una ración normal. «un poquito», menos aún.
+const POCO = {poco:0.45, poca:0.45, pocos:0.45, pocas:0.45, poquito:0.25, poquita:0.25, poquitos:0.25, poquitas:0.25, pelin:0.25, pizca:0.1, chin:0.25, nada:0.15, gota:0.1, migaja:0.1};
+const MUCHO = {mucho:1.5, mucha:1.5, muchos:1.5, muchas:1.5, bastante:1.4, monton:1.8, porron:1.8};
 const VACIAS = new Set(("de del la el los las lo al a en para por con sin y e o u un una unos unas uno mi mis su sus tu me se le que he ha hemos " +
   "comido comida comi cene cenado desayune desayunado almorce almorzado merende merendado tome tomado bebi bebido pique picado " +
   "hoy ayer noche manana mediodia tarde casa fuera restaurante bar trabajo gimnasio despues antes entreno entrenar postre segundo primero primer " +
   "otro otra otros otras mas menos solo sola algo bastante tipo como aprox aproximadamente casi entero entera enteros enteras normal mediano mediana " +
   "hasta arriba bien madre padre abuela abuelo suegra novia casero casera caseros caseras hecho hecha hechos hechas acompanado acompanada junto encima " +
-  "frito frita fritos fritas asado asada asados asadas plancha horno vapor salteado salteada cocinado cocinada g gr grs gramos ml kg par mucho mucha muchos muchas tambien luego").split(" "));
+  "frito frita fritos fritas asado asada asados asadas plancha horno vapor salteado salteada cocinado cocinada g gr grs gramos ml kg par mucho mucha muchos muchas tambien luego " +
+  "hacendado mercadona lidl carrefour dia aldi danone pascual puleva kaiku central lechera asturiana nestle kellogs marca blanca bote lata envase " +
+  "rico rica ricos ricas buenisimo tipico tipica estilo receta abuela poquito poquita pelin pizca chin bastante monton porron nada gota migaja " +
+  "fresco fresca natural naturales congelado congelada al la de tamano medio").split(" "));
 const SEPARA = w => w === "y" || w === "con" || w === "e";
-const CONTABLES = new Set(["ud","filete","trozo","chuleta","loncha","rebanada","muslo","pechuga","rodaja","pieza"]);
+const CONTABLES = new Set(["ud","filete","trozo","chuleta","loncha","rebanada","muslo","pechuga","rodaja","pieza","medallon","brocheta","tira"]);
 const ud1 = w => PORC_SIN[w] || (PORC_DEF[w] ? w : (w.endsWith("es") && PORC_DEF[w.slice(0,-2)]) ? w.slice(0,-2) : (w.endsWith("s") && PORC_DEF[w.slice(0,-1)]) ? w.slice(0,-1) : (PORC_SIN[w.replace(/e?s$/,"")] || null));
 let CAT = null, CAT_KEY = "";
 function catalogo(){
@@ -1372,8 +1380,8 @@ function catalogo(){
   });
   (window.FITALL_CATALOGO || []).forEach(([n, al, k, p, c, g, por]) => {
     const pr = {}; por.split(",").forEach(x => { const [a, b] = x.split(":"); pr[a] = +b; });
-    ents.push({n, al: al.split("|").map(normTxt), k, p, c, g, porUd:false, u: /^(cerveza|vino|cubata|refresco|bebida|zumo|leche|agua|cafe|batido de choc)/i.test(normTxt(n)) ? "ml" : "g",
-      por: pr, def: por.split(",")[0].split(":")[0], prio:1, pan: /^Bocadillo \(/.test(n) ? 1 : /^Montadito \(/.test(n) ? 0.4 : 0});
+    ents.push({n, al: al.split("|").map(normTxt), k, p, c, g, porUd:false, u: /^(cerveza|vino|cubata|refresco|bebida|zumo|leche|agua|cafe|batido|sidra|horchata|mosto|kefir|smoothie|cortado|capuchino|isotonica|caldo|sopa|gazpacho|salmorejo|ajoblanco)\b/i.test(normTxt(n)) ? "ml" : "g",
+      por: pr, def: por.split(",")[0].split(":")[0], prio:1, pan: /^Bocadillo \(/.test(n) ? 1 : /^Montadito \(/.test(n) ? 0.4 : /^Sándwich \(solo/.test(n) ? 0.45 : /^Wrap \(solo/.test(n) ? 0.6 : /^Tostada/.test(n) ? 0.5 : 0});
   });
   const alias = [];
   ents.forEach((e, ei) => e.al.forEach(a => { if (a) alias.push({ei, t:a.split(" "), len:a.length}); }));
@@ -1385,19 +1393,24 @@ const RAC_TXT = {punado:["puñado","puñados"], racion:["ración","raciones"], c
   chorreon:["chorreón","chorreones"], cuna:["cuña","cuñas"], cacito:["cacito","cacitos"], scoop:["cacito","cacitos"], tapa:["tapa","tapas"]};
 function nombreRacion(n, por){
   const t = RAC_TXT[por] || [por, /[aeiou]$/.test(por) ? por + "s" : por + "es"];
-  const num = n === 0.5 ? "½" : fmt(n, 2);
+  const num = n === 0.5 ? "½" : n === 0.25 ? "¼" : n === 0.75 ? "¾" : Math.abs(n - 1/3) < 0.01 ? "⅓" : fmt(n, 2);
   return `${num} ${n > 1 ? t[1] : t[0]}`.trim();
 }
 function leerCantidad(toks){
   // toks: palabras entre el alimento anterior y este. Devuelve {n, porcion, gramos, mult}
-  const r = {n:null, porcion:null, gramos:null, mult:1, varios:false};
+  const r = {n:null, porcion:null, gramos:null, mult:1, varios:false, poco:null};
+  const FACT = {g:1, gr:1, grs:1, gramos:1, gramo:1, ml:1, kg:1000, kilo:1000, kilos:1000, l:1000, litro:1000, litros:1000, cl:10, dl:100};
   for (let i = toks.length - 1; i >= 0; i--){
     const w = toks[i];
     if (w === "y" || w === "con" || w === "e") break;
     if (["unos","unas","varios","varias","algunos","algunas"].includes(w)){ r.varios = true; continue; }
-    const mg = w.match(/^(\d+(?:\.\d+)?)(g|gr|grs|gramos|ml|kg)$/);
-    if (mg && r.gramos == null){ r.gramos = +mg[1] * (mg[2] === "kg" ? 1000 : 1); continue; }
-    if (/^(g|gr|grs|gramos|ml|kg)$/.test(w) && i > 0 && /^\d+(\.\d+)?$/.test(toks[i-1]) && r.gramos == null){ r.gramos = +toks[i-1] * (w === "kg" ? 1000 : 1); i--; continue; }
+    if (POCO[w] != null){ if (r.poco == null) r.poco = POCO[w]; continue; }
+    if (w === "algo" && toks[i+1] === "de"){ if (r.poco == null) r.poco = 0.45; continue; }
+    if (MUCHO[w] != null){ r.mult = MUCHO[w]; continue; }
+    const mg = w.match(/^(\d+(?:\.\d+)?)(g|gr|grs|gramos|ml|kg|l|cl|dl|litros?|kilos?)$/);
+    if (mg && r.gramos == null){ r.gramos = +mg[1] * FACT[mg[2]]; continue; }
+    if (/^(g|gr|grs|gramos|gramo|ml|kg|cl|dl)$/.test(w) && i > 0 && /^\d+(\.\d+)?$/.test(toks[i-1]) && r.gramos == null){ r.gramos = +toks[i-1] * FACT[w]; i--; continue; }
+    if ((w === "cuarto" || w === "tercio") && (r.porcion === "kilo" || r.porcion === "litro") && r.n == null){ r.n = w === "cuarto" ? 0.25 : 1/3; if (["un","una"].includes(toks[i-1])) i--; continue; }
     if (r.n == null && /^\d+(\.\d+)?$/.test(w)){ r.n = +w; continue; }
     if (r.n == null && /^\d+\/\d+$/.test(w)){ const [a, b] = w.split("/").map(Number); if (b) r.n = a / b; continue; }
     if (w === "par" && r.n == null){ r.n = 2; if (toks[i-1] === "un") i--; continue; }
@@ -1435,6 +1448,14 @@ function estimarComida(texto){
     elegidos.push(c);
   }
   elegidos.sort((x, y) => x.i - y.i);
+  for (let k = elegidos.length - 2; k >= 0; k--){
+    const c = elegidos[k], sig = elegidos[k + 1], t = alias[c.ai].t;
+    const entre = toks.slice(c.i + c.n, sig.i);
+    if (t.length === 1 && ud1(t[0]) && entre.length && entre.length <= 2 && entre.every(w => w === "de" || w === "del" || w === "la" || w === "el")){
+      for (let j = c.i; j < c.i + c.n; j++) usado[j] = false;
+      elegidos.splice(k, 1);
+    }
+  }
   // "un tercio de cerveza", "una copa de ron": dos trozos del mismo alimento seguidos son uno solo
   const juntos = [];
   for (const c of elegidos){
@@ -1464,14 +1485,20 @@ function estimarComida(texto){
     let n = q.n == null ? 1 : q.n, gramos, txtCant;
     const explicito = q.n != null || q.porcion || q.gramos != null;
     if (e.porUd){
-      n = q.n == null ? 1 : q.n; gramos = n;
+      n = q.n == null ? (q.poco != null ? q.poco * 2 : 1) : q.n; gramos = n;
       txtCant = `${fmt(n,2)} ud`;
     } else if (q.gramos != null){
       gramos = q.gramos; txtCant = `${fmt(gramos)} ${e.u}`;
     } else if (!explicito && pan && e.por.bocadillo){
-      gramos = e.por.bocadillo * pan.f * pan.n; txtCant = "en el bocadillo";
+      gramos = e.por.bocadillo * pan.f * pan.n; txtCant = pan.txt || "en el bocadillo";
+    } else if (q.poco != null && !q.porcion){
+      const base = Math.max(e.por[e.def] || PORC_DEF[e.def] || 100, e.por.racion || 0);
+      gramos = base * (base >= 150 ? 1 : 1.15) * q.poco;
+      txtCant = q.poco <= 0.15 ? "una pizca" : q.poco < 0.4 ? "un poquito" : "un poco";
     } else {
       let por = porcion || e.def;
+      // «filete con patatas», «pollo con arroz»: lo que va detrás de «con» es guarnición
+      if (!explicito && !porcion && prefijo.includes("con") && out.partes.length && e.por.guarnicion) por = "guarnicion";
       if (q.n == null && !q.porcion){
         if (q.varios && e.por.racion){ por = "racion"; }
         else if ((q.varios || enPlural || pluralAlias) && CONTABLES.has(por)){ n = q.varios || (por === "chuleta" && e.por.chuleta < 60) ? 3 : 2; }
@@ -1481,7 +1508,7 @@ function estimarComida(texto){
       txtCant = nombreRacion(n, por);
       if (q.mult > 1) txtCant += " grande"; else if (q.mult < 1) txtCant += " pequeño";
     }
-    if (e.pan) pan = {f:e.pan, n};
+    if (e.pan) pan = {f:e.pan, n, txt: e.pan === 1 ? "en el bocadillo" : e.pan === 0.4 ? "en el montadito" : /^Wrap/.test(e.n) ? "en el wrap" : /^Tostada/.test(e.n) ? "en la tostada" : "en el sándwich"};
     const f = e.porUd ? gramos : gramos / 100;
     const parte = {nombre:e.n, cant:txtCant, gramos: e.porUd ? null : Math.round(gramos), u:e.u, kcal:e.k*f, p:e.p*f, c:e.c*f, g:e.g*f};
     out.partes.push(parte);
@@ -1492,7 +1519,7 @@ function estimarComida(texto){
   let trozo = [];
   const cerrar = () => { if (trozo.length) out.noEntiendo.push(trozo.join(" ")); trozo = []; };
   toks.forEach((w, i) => {
-    const ignorar = usado[i] || VACIAS.has(w) || NUMS[w] != null || ud1(w) || GRANDE.has(w) || PEQUE.has(w) || /^\d/.test(w) || w.length < 3;
+    const ignorar = usado[i] || VACIAS.has(w) || NUMS[w] != null || ud1(w) || GRANDE.has(w) || PEQUE.has(w) || POCO[w] != null || MUCHO[w] != null || /^\d/.test(w) || w.length < 3;
     if (ignorar) cerrar(); else trozo.push(w);
   });
   cerrar();
