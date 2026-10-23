@@ -304,6 +304,7 @@ input.tx:focus,select.tx:focus,textarea.tx:focus,.fld:focus-within{border-color:
 .bar{border-radius:999px}.bar i{border-radius:999px}
 .timer-in{border-radius:20px}
 .toast{border-radius:16px}
+.toast-btn{margin-left:12px;background:none;border:0;color:inherit;text-decoration:underline;font:inherit;font-weight:800;padding:2px 4px;cursor:pointer}
 .iconbtn{border-radius:10px}
 .ej-foto,.ej-anim,.ej-mini{border-radius:14px}
 .ej-anim.grande,.ej-foto.vacia.grande{border-radius:20px}
@@ -806,6 +807,40 @@ function nuevaDesdePlan(fecha, ses){
     ejercicios: (ses.ejercicios||[]).map(e => ({ nombre:e.nombre, modo:e.modo||"kg", objetivo:e.objetivo, descanso:e.descanso,
       series: seriesIniciales(e, f), rir:"", notas:"" })) };
 }
+function plantillaEd(){
+  if (!S.ed) return null;
+  return (S.plan||[]).find(p => p.n === S.ed.n) || (S.entrenos||[]).find(p => p.n === S.ed.n) || null;
+}
+function datosPlanEj(nombre){
+  const t = plantillaEd();
+  let e = t && (t.ejercicios||[]).find(x => x.nombre === nombre);
+  if (!e) for (const p of (S.plan||[]).concat(S.entrenos||[])){ e = (p.ejercicios||[]).find(x => x.nombre === nombre); if (e) break; }
+  return e || null;
+}
+function nuevoEjEd(nombre){
+  const fz = fase(S.ed.fecha), p = datosPlanEj(nombre), m = (p && p.modo) || modoDe(nombre);
+  const base = {nombre, modo:m, objetivo: p ? (p.objetivo || "") : objetivoDef(m), descanso: p ? (p.descanso || "") : (m === "cardio" ? "" : "90 s")};
+  return Object.assign(base, {series: seriesIniciales(base, fz), rir:"", notas:""});
+}
+const ordenPlantilla = () => { const t = plantillaEd(); return t ? (t.ejercicios||[]).map(x => x.nombre) : []; };
+function insertarEnOrden(ex){
+  const L = S.ed.ejercicios, orden = ordenPlantilla(), k = orden.indexOf(ex.nombre);
+  if (k < 0){ L.push(ex); return; }
+  const despues = new Set(orden.slice(k + 1)), i = L.findIndex(x => despues.has(x.nombre));
+  if (i < 0) L.push(ex); else L.splice(i, 0, ex);
+}
+// Un ejercicio del plan añadido a mano sin objetivo: recupera objetivo, descanso y series del plan
+function repararEd(){
+  if (!S.ed) return;
+  const fz = fase(S.ed.fecha);
+  S.ed.ejercicios.forEach(e => {
+    if (e.objetivo) return;
+    const p = datosPlanEj(e.nombre); if (!p || !p.objetivo) return;
+    e.objetivo = p.objetivo; e.descanso = p.descanso || e.descanso; e.modo = p.modo || e.modo;
+    const vacias = (e.series||[]).every(x => !x.ok && x.kg === "" && x.reps === "");
+    if (vacias) e.series = seriesIniciales(e, fz);
+  });
+}
 function desdeGuardada(g, ses){
   const plan = ses ? ses.ejercicios : [];
   const ejercicios = (g.ejercicios||[]).map(e => {
@@ -832,6 +867,7 @@ function abrirSesion(fecha, n){
   else if (g) S.ed = desdeGuardada(g, ses);
   else S.ed = nuevaDesdePlan(fecha, ses);
   S.ed.origen = g ? id : (S.ed.origen || null);
+  repararEd();
   S.borrarArm = null; S.exCambio = null; S.entEd = null;
   S.tab = "entreno"; render(); window.scrollTo(0,0);
 }
@@ -895,6 +931,13 @@ function vEntreno(){
       </section>`;
     });
     if (!ed.ejercicios.length) html += `<div class="empty">Añade los ejercicios que vas a hacer desde la biblioteca.</div>`;
+    { const orden = ordenPlantilla(), hay = new Set(ed.ejercicios.map(x => x.nombre));
+      const faltan = orden.filter(nm => !hay.has(nm));
+      const enPlan = ed.ejercicios.map(x => orden.indexOf(x.nombre)).filter(k => k >= 0);
+      const desorden = enPlan.some((k, i) => i && k < enPlan[i - 1]);
+      if (faltan.length || desorden) html += `<section class="card sec" style="gap:8px"><span class="eyebrow">Tu plan</span>
+        ${faltan.map(nm => `<div class="row between"><span class="small">Falta <b>${esc(nm)}</b></span><button class="btn sm pri" data-act="exRestaurar" data-n="${esc(nm)}">Volver a ponerlo</button></div>`).join("")}
+        ${desorden ? `<div class="row between"><span class="small">Los ejercicios no están en el orden del plan.</span><button class="btn sm" data-act="exOrdenar">Ordenar como en el plan</button></div>` : ""}</section>`; }
     html += `<button class="btn block" data-act="exBib">+ Añadir ejercicios</button>
       <section class="card sec">
         ${ed.n >= 100 ? `<label class="lb">Nombre de la sesión<input class="tx" id="ed-nombre" data-in-ed="nombre" value="${esc(ed.nombre)}"></label>` : ""}
@@ -2501,10 +2544,7 @@ function bibAplicar(nombres){
   if (d.tipo === "ent" && S.entEd){
     nombres.forEach(n => { const m = modoDe(n); S.entEd.ejercicios.push({nombre:n, objetivo:objetivoDef(m), descanso: m === "cardio" ? "" : "90 s", modo:m}); });
   } else if (d.tipo === "ed" && S.ed){
-    const fz = fase(S.ed.fecha);
-    nombres.forEach(n => { const m = modoDe(n), k = m === "cardio" ? 1 : 3;
-      const series = usaAprox({modo:m}, fz) ? seriesIniciales({modo:m, objetivo:"3 × 8-12"}, fz) : Array.from({length:k}, () => ({kg:"", reps:"", ok:false}));
-      S.ed.ejercicios.push({nombre:n, modo:m, objetivo:"", descanso: m === "cardio" ? "" : "90 s", series, rir:"", notas:""}); });
+    nombres.forEach(n => insertarEnOrden(nuevoEjEd(n)));
     guardarBorrador();
   } else if (d.tipo === "edCambio" && S.ed && S.ed.ejercicios[d.i]){
     const e = S.ed.ejercicios[d.i]; e.nombre = nombres[0]; e.modo = modoDe(nombres[0]); guardarBorrador();
@@ -3175,7 +3215,17 @@ view.addEventListener("click", async e => {
     if (j >= 0 && j < L.length){ [L[i], L[j]] = [L[j], L[i]]; S.cfgDirty = true; render(); }
   }
   // registros
-  else if (a === "exQuitar" && S.ed){ S.ed.ejercicios.splice(+b.dataset.e, 1); S.exCambio = null; guardarBorrador(); render(); }
+  else if (a === "exQuitar" && S.ed){
+    const i = +b.dataset.e, [quitado] = S.ed.ejercicios.splice(i, 1), ed = S.ed;
+    S.exCambio = null; guardarBorrador(); render();
+    if (quitado) toast(`Quitado: ${quitado.nombre}`, {txt:"Deshacer", fn: () => { if (S.ed !== ed) return; ed.ejercicios.splice(Math.min(i, ed.ejercicios.length), 0, quitado); guardarBorrador(); render(); }});
+  }
+  else if (a === "exRestaurar" && S.ed){ insertarEnOrden(nuevoEjEd(b.dataset.n)); guardarBorrador(); render(); toast("Ejercicio recuperado del plan"); }
+  else if (a === "exOrdenar" && S.ed){
+    const orden = ordenPlantilla(), L = S.ed.ejercicios;
+    let ult = -1; const pos = L.map((x, i) => { const k = orden.indexOf(x.nombre); if (k >= 0){ ult = k; return [k, 0, i]; } return [ult, 1, i]; });
+    S.ed.ejercicios = L.map((x, i) => [x, pos[i]]).sort((A, B) => A[1][0] - B[1][0] || A[1][1] - B[1][1] || A[1][2] - B[1][2]).map(z => z[0]); guardarBorrador(); render(); toast("Ordenado como en el plan");
+  }
   else if (a === "exCambiar" && S.ed){
     const i = +b.dataset.e, lib = bibEj(S.ed.ejercicios[i].nombre);
     abrirBib({modo:"elegir", multi:false, destino:{tipo:"edCambio", i}, mus: lib && lib.p && lib.p[0] ? grupoDe(lib.p[0]) : (lib && lib.m === "cardio" ? "Cardio" : "")});
@@ -3292,7 +3342,15 @@ setInterval(() => { if (document.visibilityState === "visible") sincronizar(); }
 document.getElementById("imp-file").addEventListener("change", e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) leerCopia(f); });
 
 let toastT = null;
-function toast(msg){ const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 3200); }
+function toast(msg, accion){
+  const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT);
+  if (accion){
+    const b = document.createElement("button"); b.className = "toast-btn"; b.textContent = accion.txt;
+    b.onclick = () => { t.hidden = true; clearTimeout(toastT); accion.fn(); };
+    t.appendChild(b);
+  }
+  toastT = setTimeout(() => { t.hidden = true; }, accion ? 6000 : 3200);
+}
 
 init();
 })();
