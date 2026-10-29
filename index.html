@@ -594,11 +594,30 @@ const CARDIO_NUEVO = {
     {nombre:"Circuito A contrarreloj", modo:"marca", unidad:"min", mejor:"menos", kcalMin:10, semanas:"impares", objetivo:"5 rondas: 30 s sprint en spinning · 15 kettlebell swings · 10 flexiones · 20 s cuerdas", descanso:"—", hoja:"Circuito A · 5 rondas lo más rápido posible: tiempo total", nota:"Calienta 5 min antes. Lo más rápido posible con buena técnica; apunta el tiempo total (ej.: 18,5). Swings con peso moderado: mañana toca peso muerto."},
     {nombre:"Circuito B contrarreloj", modo:"marca", unidad:"min", mejor:"menos", kcalMin:10, semanas:"pares", objetivo:"5 rondas: 50 saltos de comba · 10 lanzamientos de balón medicinal · 5 saltos al cajón · 20 s cuerdas", descanso:"—", hoja:"Circuito B · 5 rondas lo más rápido posible: tiempo total", nota:"Calienta 5 min antes. Baja del cajón andando. Apunta el tiempo total (ej.: 18,5)."}]}
 };
+// Ejercicios nuevos de la hoja: se añaden una vez, en su sitio, si no están ya
+const NUEVOS_PLAN = [
+  {n:9, despues:"Jalón al pecho", e:{nombre:"Pullover en polea alta", modo:"kg", objetivo:"3 × 10-15", descanso:"60-90 s",
+    nota:"De pie y con el tronco algo inclinado. Codos casi rectos y fijos: baja la barra hasta los muslos y sube controlado hasta notar el dorsal estirado, sin encoger los hombros."}}
+];
+function anadirPlan(){
+  let hecho = false;
+  const ya = lsGet("fitall_plan_nuevos") || [];
+  S.plan = (S.plan || []).map(s => {
+    const nuevos = NUEVOS_PLAN.filter(x => x.n === s.n && !ya.includes(x.e.nombre) && !(s.ejercicios||[]).some(e => e.nombre === x.e.nombre));
+    if (!nuevos.length) return s;
+    const L = (s.ejercicios || []).slice();
+    nuevos.forEach(x => { const i = L.findIndex(e => e.nombre === x.despues); L.splice(i < 0 ? L.length : i + 1, 0, Object.assign({}, x.e)); });
+    hecho = true; return Object.assign({}, s, {ejercicios: L});
+  });
+  if ((S.plan||[]).length) lsSet("fitall_plan_nuevos", NUEVOS_PLAN.map(x => x.e.nombre));
+  return hecho;
+}
 function migrarPlan(){
   const P = S.plan || [];
   const viejo = P.some(s => (s.ejercicios||[]).some(e => e.nombre === "Caminata en cinta inclinada" || e.nombre === "Remo ergómetro por intervalos" || e.nombre === "Bicicleta estática suave"));
-  if (!viejo) return;
+  if (!viejo){ if (anadirPlan()) escribir("plan/rutina", {sesiones:S.plan}); return; }
   S.plan = P.map(s => CARDIO_NUEVO[s.n] && s.dia && s.turno === "Tarde" ? Object.assign({}, s, JSON.parse(JSON.stringify(CARDIO_NUEVO[s.n]))) : s);
+  anadirPlan();
   escribir("plan/rutina", {sesiones:S.plan});
 }
 async function init(){
