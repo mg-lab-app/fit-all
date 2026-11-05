@@ -7,7 +7,7 @@
 // tus móviles estén siempre iguales. No toques esa pestaña.
 
 function doGet() {
-  return salida({ ok: true, app: "FIT-ALL", version: 2, hoja: SpreadsheetApp.getActiveSpreadsheet().getName() });
+  return salida({ ok: true, app: "FIT-ALL", version: 3, hoja: SpreadsheetApp.getActiveSpreadsheet().getName() });
 }
 
 function doPost(e) {
@@ -214,7 +214,7 @@ function prepararMetodo(ss, d) {
     Object.keys(ALIAS).forEach(function (viejo) {
       var i = vals[cab].map(norm).indexOf(norm(viejo));
       if (i < 0) i = vals[cab].map(norm).indexOf(norm(ALIAS[viejo]));
-      if (i >= 0) { c[viejo] = i; sh.getRange(cab + 1, i + 1).setValue(ALIAS[viejo]); }
+      if (i >= 0) { c[viejo] = i; sh.getRange(cab + 1, i + 1).setValue(info.columnas === "series" ? viejo : ALIAS[viejo]); }
     });
     var cObj = vals[cab].map(norm).indexOf("objetivo");
     var cVol = -1;
@@ -227,13 +227,17 @@ function prepararMetodo(ss, d) {
     var obj = {};
     Object.keys(info.objetivos || {}).forEach(function (k) { obj[norm(k)] = info.objetivos[k]; });
     var pares = [["S2 kg", "S2 reps"], ["S3 kg", "S3 reps"], ["S4 kg", "S4 reps"]].filter(function (p) { return c[p[0]] !== undefined && c[p[1]] !== undefined; });
+    // Método v2: las aproximaciones no se apuntan y las 4 columnas son series efectivas
+    var pares4 = [["S1 kg", "S1 reps"]].filter(function (p) { return c[p[0]] !== undefined && c[p[1]] !== undefined; }).concat(pares);
+    var cuatro = {};
+    (info.cuatro || []).forEach(function (k) { cuatro[norm(k)] = true; });
     for (var f = cab + 1; f < vals.length; f++) {
       var nombre = norm(vals[f][0]);
       if (!nombre || /^\d+\.\s/.test(String(vals[f][0]).trim()) || !obj[nombre]) continue;
       if (cObj >= 0) sh.getRange(f + 1, cObj + 1).setValue(obj[nombre]);
       if (cVol >= 0 && pares.length) {
         var fila = f + 1;
-        var suma = pares.map(function (p) { return "N(" + letra(c[p[0]]) + fila + ")*N(" + letra(c[p[1]]) + fila + ")"; }).join("+");
+        var suma = (cuatro[nombre] ? pares4 : pares).map(function (p) { return "N(" + letra(c[p[0]]) + fila + ")*N(" + letra(c[p[1]]) + fila + ")"; }).join("+");
         // Sin comas ni comillas: funciona igual con la hoja en español o en inglés.
         // El formato oculta el 0 de las filas que aún están vacías.
         sh.getRange(fila, cVol + 1).setFormula("=" + suma).setNumberFormat("#,##0;-#,##0;");
@@ -258,5 +262,18 @@ function prepararMetodo(ss, d) {
       guia.getRange(fila0, 1).setFontWeight("bold");
     }
   }
-  return { ok: true, metodo: hechas };
+  if (guia) {
+    var texto2 = guia.getDataRange().getValues().map(function (r) { return String(r[0]); }).join("\n");
+    if (texto2.indexOf("APROXIMACIONES SEGÚN EL EJERCICIO") < 0) {
+      var f2 = guia.getLastRow() + 2;
+      var l2 = [
+        ["APROXIMACIONES SEGÚN EL EJERCICIO (desde el 5 de noviembre)"],
+        ["Cada ejercicio indica sus aproximaciones (0 a 3) y sus series efectivas. Las aproximaciones no se apuntan: las columnas S1-S4 son series efectivas y todas cuentan para el volumen."],
+        ["Básicos con barra e hip thrust: a 1 rep del fallo. El resto: al fallo. Descarga: un 40 % menos de series efectivas y 3-4 reps de margen."]
+      ];
+      guia.getRange(f2, 1, l2.length, 1).setValues(l2);
+      guia.getRange(f2, 1).setFontWeight("bold");
+    }
+  }
+  return { ok: true, metodo: hechas, v: 3 };
 }

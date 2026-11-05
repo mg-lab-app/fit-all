@@ -469,9 +469,12 @@ function fase(f){
     r.hi = true;
     r.hiFase = r.ajuste === "menos1" ? "adapt" : r.ajuste === "descarga" ? "descarga" : (sc === L - 1 ? "max" : "int");
     Object.assign(r, HI_FASE[r.hiFase]);
+    if (f >= (m.v2 || METODO_V2)){ r.v2 = true; r.series = "aproximaciones solo donde se indica (no se apuntan)"; }
   }
   return r;
 }
+// Desde aquí cada ejercicio lleva sus propias aproximaciones (0-3) y sus series efectivas, como en la hoja
+const METODO_V2 = "2026-11-05";
 const HI_FASE = {
   adapt: {nombre:"Adaptación al fallo", rir:"Efectivas a 1 rep del fallo", series:"1 de aproximación + 1-3 efectivas"},
   int: {nombre:"Intensidad", rir:"Efectivas al fallo (a 1 rep en básicos con barra)", series:"1 de aproximación + 1-3 efectivas"},
@@ -486,14 +489,39 @@ function efectivasHI(objetivo, f){
 }
 // «clasico»: ejercicios que no siguen el método (el core de las tardes de cardio)
 const clasicoEj = e => !!(e && (e.clasico || (e.nombre && (planEj(e.nombre) || {}).clasico)));
-const usaAprox = (e, f) => !!(f && f.hi && (e.modo === "kg" || e.modo === "corporal" || !e.modo) && !clasicoEj(e));
+const esHI = (e, f) => !!(f && f.hi && (e.modo === "kg" || e.modo === "corporal" || !e.modo) && !clasicoEj(e));
+const datoPlan = (e, k) => e[k] !== undefined ? e[k] : ((planEj(e.nombre) || {})[k]);
+// Aproximaciones de un ejercicio: 1 en el método antiguo; las del plan desde el método v2
+function nAprox(e, f){
+  if (!esHI(e, f)) return 0;
+  if (!f.v2) return 1;
+  const a = datoPlan(e, "aprox");
+  return a !== undefined && a !== "" ? Math.max(0, Math.min(3, +a || 0)) : (e.modo === "corporal" ? 0 : 1);
+}
+const usaAprox = (e, f) => nAprox(e, f) > 0;
+// Series efectivas: v2 = las del plan (en descarga, un 40 % menos)
+function efectivas(e, f){
+  if (!f || !f.v2) return efectivasHI(e.objetivo, f);
+  const m = String(e.objetivo||"").match(/^(\d+)\s*×/), base = m ? +m[1] : 3;
+  return f.hiFase === "descarga" ? Math.max(1, Math.round(base * 0.6)) : base;
+}
+const aUnoDelFallo = e => datoPlan(e, "fallo") === "a1";
 function seriesIniciales(e, f){
   const vacia = () => ({kg:"", reps:"", ok:false});
   if (e.modo === "marca") return [vacia()];
-  if (usaAprox(e, f)) return [Object.assign(vacia(), {ap:true})].concat(Array.from({length: efectivasHI(e.objetivo, f)}, vacia));
+  if (esHI(e, f)) return Array.from({length: nAprox(e, f)}, () => Object.assign(vacia(), {ap:true})).concat(Array.from({length: efectivas(e, f)}, vacia));
   return Array.from({length: seriesSugeridas(e.objetivo, f)}, vacia);
 }
 const efec = L => (L || []).filter(x => !x.ap);
+function objetivoTxt(e, f, conFallo){
+  if (!esHI(e, f)) return e.objetivo || "";
+  const o = String(e.objetivo || ""), m = o.match(/^(\d+)\s*×\s*(.*)$/);
+  if (!m) return o;
+  const a = nAprox(e, f), desc = f.hiFase === "descarga", resto = desc || conFallo ? m[2].replace(/\s*\/.*$/, "") : m[2];
+  if (!f.v2) return `1 aprox + ${efectivas(e, f)} × ${resto}`;
+  const suf = !conFallo ? "" : desc ? " (descarga: 3-4 reps de margen)" : aUnoDelFallo(e) ? " (a 1 del fallo)" : " al fallo";
+  return `${a ? a + " aprox + " : ""}${efectivas(e, f)} × ${resto}${suf}`;
+}
 function seriesSugeridas(objetivo, f){
   const m = String(objetivo||"").match(/^(\d+)\s*×/);
   if (!m) return 1;
@@ -616,12 +644,36 @@ function anadirPlan(){
   if ((S.plan||[]).length) lsSet("fitall_plan_nuevos", NUEVOS_PLAN.map(x => x.e.nombre));
   return hecho;
 }
+const PLAN_V2 = {
+  1: {"Press de banca con barra":[3,"4 × 5-6","a1"], "Press inclinado con mancuernas":[1,"3 × 8-10"], "Cruces en polea alta":[0,"3 × 12-15"], "Fondos en paralelas":[0,"3 × 8-12"], "Press francés con barra Z":[1,"3 × 8-10"], "Extensión en polea alta con cuerda":[0,"3 × 12-15"]},
+  2: {"Dominadas":[2,"4 × 5-8"], "Remo con barra":[1,"4 × 6-8","a1"], "Remo sentado en polea baja":[0,"3 × 10-12"], "Curl con barra":[1,"3 × 8-10"], "Curl martillo alterno":[0,"3 × 10-12"]},
+  4: {"Sentadilla trasera con barra":[3,"4 × 5-6","a1"], "Prensa inclinada 45°":[1,"3 × 10-12"], "Sentadilla búlgara":[0,"3 × 8-10 / pierna"], "Extensión de cuádriceps":[0,"3 × 12-15"], "Elevación de talones de pie":[1,"4 × 10-15"], "Patada de glúteo en polea":[0,"2 × 12-15 / pierna"], "Abducción de cadera en máquina":[0,"2 × 15-20"]},
+  6: {"Press militar de pie":[3,"4 × 5-8","a1"], "Elevaciones laterales":[0,"4 × 12-15"], "Face pull":[0,"3 × 12-15"], "Pájaros en contractor inverso":[0,"3 × 12-15"], "Encogimientos":[1,"3 × 10-12"], "Crunch en polea alta":[0,"3 × 12-15"]},
+  8: {"Peso muerto convencional":[3,"4 × 4-6","a1"], "Hip thrust con barra":[1,"4 × 8-10","a1"], "Curl femoral tumbado":[0,"3 × 10-12"], "Elevación de talones sentado":[1,"3 × 12-15"]},
+  9: {"Press inclinado en máquina Smith":[2,"3 × 8-10"], "Aperturas en contractor":[0,"3 × 12-15"], "Jalón al pecho":[1,"3 × 10-12"], "Pullover en polea alta":[0,"2 × 10-15"], "Remo con mancuerna a una mano":[0,"3 × 10-12 / lado"], "Curl en polea baja (superserie A)":[0,"3 × 12-15"], "Extensión sobre la cabeza (superserie B)":[0,"3 × 12-15"]}
+};
+function planV2(){
+  let hecho = false;
+  S.plan = (S.plan || []).map(s => {
+    const T = PLAN_V2[s.n]; if (!T) return s;
+    let cambia = false;
+    const L = (s.ejercicios || []).map(e => {
+      const t = T[e.nombre]; if (!t || e.aprox !== undefined) return e;
+      cambia = true; const o = Object.assign({}, e, {aprox:t[0], objetivo:t[1]});
+      if (t[2]) o.fallo = t[2]; else delete o.fallo;
+      return o;
+    });
+    if (!cambia) return s;
+    hecho = true; return Object.assign({}, s, {ejercicios: L});
+  });
+  return hecho;
+}
 function migrarPlan(){
   const P = S.plan || [];
   const viejo = P.some(s => (s.ejercicios||[]).some(e => e.nombre === "Caminata en cinta inclinada" || e.nombre === "Remo ergómetro por intervalos" || e.nombre === "Bicicleta estática suave"));
-  if (!viejo){ if (anadirPlan()) escribir("plan/rutina", {sesiones:S.plan}); return; }
+  if (!viejo){ const a = anadirPlan(), b = planV2(); if (a || b) escribir("plan/rutina", {sesiones:S.plan}); return; }
   S.plan = P.map(s => CARDIO_NUEVO[s.n] && s.dia && s.turno === "Tarde" ? Object.assign({}, s, JSON.parse(JSON.stringify(CARDIO_NUEVO[s.n]))) : s);
-  anadirPlan();
+  anadirPlan(); planV2();
   escribir("plan/rutina", {sesiones:S.plan});
 }
 async function init(){
@@ -903,6 +955,13 @@ function insertarEnOrden(ex){
 function repararEd(){
   if (!S.ed) return;
   const fz = fase(S.ed.fecha);
+  if (fz && fz.v2) S.ed.ejercicios.forEach(e => {
+    const L = e.series || [], vacias = L.every(x => !x.ok && x.kg === "" && x.reps === "");
+    if (!vacias || !esHI(e, fz)) return;
+    const p = datosPlanEj(e.nombre); if (p && p.objetivo) e.objetivo = p.objetivo;
+    const nuevo = seriesIniciales(e, fz);
+    if (nuevo.length !== L.length || nuevo.some((x, i) => !!x.ap !== !!L[i].ap)) e.series = nuevo;
+  });
   S.ed.ejercicios.forEach(e => {
     if (e.objetivo) return;
     const p = datosPlanEj(e.nombre); if (!p || !p.objetivo) return;
@@ -968,7 +1027,7 @@ function vEntreno(){
   if (S.ed){
     const ed = S.ed; const f = fase(ed.fecha);
     html += `<div class="sec-h"><h2>${esc(ed.nombre)}</h2>${f?`<span class="pill acc">Sem. ${f.semana} · ${esc(f.nombre)}</span>`:""}</div>`;
-    if (f && (!f.hi || ed.ejercicios.some(x => usaAprox(x, f)))) html += `<div class="hint">${esc(f.series)} · ${esc(f.rir)}</div>`;
+    if (f && (!f.hi || ed.ejercicios.some(x => esHI(x, f)))) html += `<div class="hint">${esc(f.series)} · ${esc(f.rir)}</div>`;
     { const pl = plantillaEd(); if (pl && pl.noDescarga && f && !f.fuera && f.ajuste === "descarga") html += `<div class="hint down">Esta sesión no se hace en semana de descarga: hoy descansa.</div>`; }
     ed.ejercicios.forEach((e, ei) => {
       const og = objetivoHoy(e, ed.fecha);
@@ -977,10 +1036,11 @@ function vEntreno(){
       const solo = e.modo === "tiempo" || e.modo === "cardio" || e.modo === "marca";
       const uRep = e.modo==="tiempo" ? "seg" : e.modo==="cardio" ? "min" : e.modo==="marca" ? (pe.unidad || "dato") : "reps";
       const uKg = e.modo==="corporal" ? "+kg" : "kg";
-      let nEf = 0;
+      let nEf = 0, nAp = 0;
+      const variasAp = e.series.filter(x => x.ap).length > 1;
       const sets = e.series.map((s, si) => {
         const ph = og.series[si] || null;
-        const etq = s.ap ? "A" : String(++nEf), nom = s.ap ? "aproximación" : `serie ${nEf}`;
+        const etq = s.ap ? (variasAp ? "A" + (++nAp) : "A") : String(++nEf), nom = s.ap ? "aproximación" : `serie ${nEf}`;
         const phKg = ph && ph.kg ? fmt(ph.kg,2) : (e.modo==="corporal"?"0":"");
         const phR = ph && ph.reps!=null ? String(ph.reps) : "";
         return `<div class="set ${solo?"solo":""} ${s.ok?"ok":""} ${s.ap?"ap":""}">
@@ -990,7 +1050,7 @@ function vEntreno(){
           <button class="chk" data-act="check" data-e="${ei}" data-s="${si}" aria-label="${nom} hecha" aria-pressed="${!!s.ok}">✓</button>
         </div>`; }).join("");
       html += `<section class="card ex">
-        <div class="ex-h">${lib ? `<button class="ej-mini" data-act="verEj" data-n="${esc(e.nombre)}" aria-label="Cómo se hace ${esc(e.nombre)}">${animEj(lib) || fotoEj(lib)}</button>` : ""}<div class="grow"><h3>${esc(e.nombre)}</h3><div class="ex-meta">${esc([usaAprox(e, f) && /^\d+\s*×/.test(e.objetivo||"") ? String(e.objetivo).replace(/^\d+\s*×/, `1 aprox + ${efectivasHI(e.objetivo, f)} ×`) : e.objetivo, e.descanso && e.descanso !== "—" ? "descanso " + e.descanso : ""].filter(Boolean).join(" · "))}</div>${pe.nota ? `<div class="muted small" style="margin-top:2px">${esc(pe.nota)}</div>` : ""}
+        <div class="ex-h">${lib ? `<button class="ej-mini" data-act="verEj" data-n="${esc(e.nombre)}" aria-label="Cómo se hace ${esc(e.nombre)}">${animEj(lib) || fotoEj(lib)}</button>` : ""}<div class="grow"><h3>${esc(e.nombre)}</h3><div class="ex-meta">${esc([objetivoTxt(e, f), e.descanso && e.descanso !== "—" ? "descanso " + e.descanso : ""].filter(Boolean).join(" · "))}</div>${pe.nota ? `<div class="muted small" style="margin-top:2px">${esc(pe.nota)}</div>` : ""}
             <button class="lnk-btn" data-act="exCambiar" data-e="${ei}">⇄ Cambiar ejercicio</button></div>
           <button class="iconbtn" data-act="exQuitar" data-e="${ei}" aria-label="Quitar ${esc(e.nombre)} de esta sesión">✕</button></div>
         ${objetivoHTML(e, og)}
@@ -2043,7 +2103,7 @@ function payloadSesion(s, vaciar){
   const sx = x => ({kg:x.kg ?? null, reps:x.reps ?? null});
   let ejercicios = (s.ejercicios || []).map(e => {
     const L = e.series || [], ap = L.find(x => x.ap);
-    const series = fz.hi && (ap || ((e.modo === "kg" || e.modo === "corporal") && !clasicoEj(e))) ? [ap ? sx(ap) : {kg:null, reps:null}].concat(efec(L).map(sx)) : L.map(sx);
+    const series = fz.v2 ? efec(L).map(sx) : fz.hi && (ap || ((e.modo === "kg" || e.modo === "corporal") && !clasicoEj(e))) ? [ap ? sx(ap) : {kg:null, reps:null}].concat(efec(L).map(sx)) : L.map(sx);
     return {nombre:(planEj(e.nombre, s.n) || {}).hoja || e.nombre, series, rir:e.rir ?? null, notas:e.notas || ""};
   });
   if (vaciar){ const pl = (S.plan||[]).find(p => p.n === s.n); ejercicios = ((pl && pl.ejercicios) || s.ejercicios || []).filter(e => tocaSemana(e, s.fecha)).map(e => ({nombre:e.hoja || e.nombre, series:[], rir:null, notas:""})); }
@@ -2102,15 +2162,26 @@ function payloadMetodo(){
   const m = obj().metodo || {}, C = ciclo(), semanas = {};
   if (m.tipo !== "hi") return null;
   for (let n = Math.max(1, +m.desde || 1); n <= C.semanas; n++){
-    const fz = fase(addDias(obj().inicio, (n - 1) * 7)); if (!fz || !fz.hi) continue;
-    const objetivos = {};
-    (S.plan || []).forEach(ses => (ses.ejercicios || []).forEach(e => {
-      if (!usaAprox(e, fz)) return;
-      const r = rangoReps(e.objetivo), rango = r ? (r.hi !== r.lo ? `${r.lo}-${r.hi}` : `${r.lo}`) : "";
-      const suf = fz.hiFase === "descarga" ? " (3-4 de margen)" : fz.hiFase === "adapt" ? " (a 1 del fallo)" : " al fallo";
-      objetivos[e.nombre] = `1 aprox + ${efectivasHI(e.objetivo, fz)}${rango ? " × " + rango : ""}${suf}`;
-    }));
-    semanas[n] = {fase: textoFase(fz), objetivos};
+    // Solo las semanas con el método actual: las anteriores ya están hechas y no se tocan
+    const ini = addDias(obj().inicio, (n - 1) * 7), fin = fase(addDias(ini, 6)); if (!fin || !fin.hi || !fin.v2) continue;
+    const objetivos = {}, cuatro = [];
+    let todasV2 = true;
+    (S.plan || []).forEach(ses => {
+      const k = DIAS_SEM.indexOf(ses.dia), fz = fase(addDias(ini, k < 0 ? 0 : k));
+      if (!fz || !fz.hi) return;
+      if (!fz.v2) todasV2 = false;
+      (ses.ejercicios || []).forEach(e => {
+        if (!esHI(e, fz)) return;
+        const nom = e.hoja || e.nombre;
+        if (fz.v2){ objetivos[nom] = objetivoTxt(e, fz, true); cuatro.push(nom); return; }
+        if (!fin.v2){
+          const r = rangoReps(e.objetivo), rango = r ? (r.hi !== r.lo ? `${r.lo}-${r.hi}` : `${r.lo}`) : "";
+          const suf = fz.hiFase === "descarga" ? " (3-4 de margen)" : fz.hiFase === "adapt" ? " (a 1 del fallo)" : " al fallo";
+          objetivos[nom] = `1 aprox + ${efectivasHI(e.objetivo, fz)}${rango ? " × " + rango : ""}${suf}`;
+        }
+      });
+    });
+    semanas[n] = {fase: textoFase(fin), objetivos, cuatro, columnas: fin.v2 && todasV2 ? "series" : ""};
   }
   return {desde: +m.desde || 1, semanas};
 }
@@ -2124,9 +2195,9 @@ async function enviarMetodoHoja(manual){
     const r = await fetch(url, {method:"POST", body:JSON.stringify(Object.assign({clave:claveHoja(), accion:"metodo"}, d)), headers:{"Content-Type":"text/plain;charset=utf-8"}});
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || "error");
-    if (j.metodo == null) throw new Error("antiguo");
+    if (j.metodo == null || !(j.v >= 3)) throw new Error("antiguo");
     lsSet("fitall_hoja_metodo", clave); lsSet("fitall_hoja_metodo_err", null);
-    if (manual) toast(`Hoja preparada: ${j.metodo} semanas con aproximación + efectivas.`);
+    if (manual) toast(`Hoja preparada: ${j.metodo} semanas con las series de cada ejercicio.`);
   } catch(e){
     lsSet("fitall_hoja_metodo_err", String(e && e.message || e));
     if (manual) toast(String(e && e.message) === "antiguo" ? "Tu hoja tiene el código antiguo: actualízalo (mira «Tu hoja de Google» en Ajustes)." : "No pude preparar la hoja. Lo reintento más tarde.");
@@ -2184,7 +2255,7 @@ function vRutina(){
     return `<section class="card sec">
       <div class="sec-h"><span class="eyebrow">Tu rutina</span><button class="btn sm pri" data-act="rutEditar">Editar rutina</button></div>
       ${ordenPlan(S.plan||[]).map(s => `<details><summary>${esc(s.dia)} ${esc((s.turno||"").toLowerCase())} — ${esc(s.nombre)}</summary>
-        <div class="tbl-w" style="margin-top:8px"><table><tbody>${(s.ejercicios||[]).map(e => `<tr><td>${esc(e.nombre)}</td><td>${esc(e.objetivo)}</td><td class="muted">${esc(e.descanso)}</td></tr>`).join("") || `<tr><td class="muted">Sin ejercicios</td></tr>`}</tbody></table></div></details>`).join("<hr>") || `<div class="empty">No hay rutina. Pulsa «Editar rutina» para crearla.</div>`}
+        <div class="tbl-w" style="margin-top:8px"><table><tbody>${(s.ejercicios||[]).map(e => `<tr><td>${esc(e.nombre)}</td><td>${esc(objetivoTxt(e, fase(hoyISO()), true))}</td><td class="muted">${esc(e.descanso)}</td></tr>`).join("") || `<tr><td class="muted">Sin ejercicios</td></tr>`}</tbody></table></div></details>`).join("<hr>") || `<div class="empty">No hay rutina. Pulsa «Editar rutina» para crearla.</div>`}
     </section>`;
   }
   const nombres = nombresEjercicios();
@@ -2207,6 +2278,10 @@ function vRutina(){
           <label class="lb">Minutos que dura (kcal)<input class="tx" id="re-k-${si}-${ei}" data-r="min" data-si="${si}" data-ei="${ei}" inputmode="numeric" value="${esc(e.min||"")}" placeholder="20"></label>
         </div>` : ""}
         <label class="lb">Cuándo se hace<select class="tx" id="re-s-${si}-${ei}" data-r="semanas" data-si="${si}" data-ei="${ei}">${opts(SEMANAS, e.semanas||"todas")}</select></label>
+        ${(e.modo === "kg" || e.modo === "corporal" || !e.modo) && !e.clasico ? `<div class="grid2">
+          <label class="lb">Aproximaciones<select class="tx" id="re-a-${si}-${ei}" data-r="aprox" data-si="${si}" data-ei="${ei}">${opts({"0":"Ninguna", "1":"1", "2":"2", "3":"3"}, String(e.aprox ?? 1))}</select></label>
+          <label class="lb">Efectivas<select class="tx" id="re-f-${si}-${ei}" data-r="fallo" data-si="${si}" data-ei="${ei}">${opts({fallo:"Al fallo", a1:"A 1 rep del fallo"}, e.fallo === "a1" ? "a1" : "fallo")}</select></label>
+        </div>` : ""}
         ${e.modo === "kg" || e.modo === "corporal" || !e.modo ? `<label class="row small" style="gap:8px"><input type="checkbox" id="re-c-${si}-${ei}" data-r="clasico" data-si="${si}" data-ei="${ei}" ${e.clasico ? "checked" : ""}> Series normales (sin aproximación ni fallo)</label>` : ""}
         <label class="lb">Nota (cómo se hace)<input class="tx" id="re-x-${si}-${ei}" data-r="nota" data-si="${si}" data-ei="${ei}" value="${esc(e.nota||"")}" placeholder="Opcional"></label>
       </div>`).join("");
@@ -2242,6 +2317,8 @@ async function guardarRutina(){
       if (o.modo === "marca"){ o.unidad = (e.unidad||"").trim(); o.mejor = e.mejor || "mas"; if (num(e.min)) o.min = num(e.min); if (e.kcalMin) o.kcalMin = e.kcalMin; }
       if (e.semanas && e.semanas !== "todas") o.semanas = e.semanas;
       if (e.clasico) o.clasico = true;
+      if (e.aprox !== undefined && e.aprox !== "") o.aprox = +e.aprox;
+      if (e.fallo === "a1") o.fallo = "a1";
       if ((e.nota||"").trim()) o.nota = e.nota.trim();
       if (e.hoja && e.nombre.trim() === e.nombreOrig) o.hoja = e.hoja;
       return o;
@@ -2773,15 +2850,20 @@ function objetivoHoy(e, fecha){
   const ref = referencia(e.nombre, fecha);
   const out = {tipo:"", fase:fs, ai:hi, aiFase: fz && fz.hiFase, ref, series:[], kg:null, W:null, lo, hi:hi_, ap:null, nEf:n};
   const lista = f => Array.from({length:n}, (_, i) => f(i));
-  const montar = (eff, ap) => { let k = 0; out.ap = ap || null; out.series = L.length ? L.map(s => s.ap ? (ap || {kg:null, reps:null}) : (eff[Math.min(k++, eff.length - 1)])) : eff; };
+  const montar = (eff, ap) => { let k = 0, j = 0; out.ap = ap && ap.length ? ap : null; out.series = L.length ? L.map(s => s.ap ? ((ap && ap[Math.min(j++, ap.length - 1)]) || {kg:null, reps:null}) : (eff[Math.min(k++, eff.length - 1)])) : eff; };
+  // Aproximaciones: 1 → 60 % × 6 · 2 → 50 % × 8 y 75 % × 4 · 3 → 40 % × 8, 60 % × 5 y 80 % × 3
   const aprox = kg => {
-    if (!L.some(s => s.ap)) return null;
-    if (e.modo === "corporal") return {kg:0, reps: Math.max(3, Math.round((lo || 8) / 2))};
-    if (!kg) return {kg:null, reps: lo && lo >= 10 ? 10 : 6};
-    const lib = bibEj(e.nombre), paso = kg >= 20 ? 2.5 : 1;
-    let a = Math.floor(kg * (lo && lo >= 10 ? 0.5 : 0.6) / paso) * paso;
-    if (lib && lib.e === "Barra") a = Math.max(20, a);
-    return {kg: Math.max(paso, a), reps: lo && lo >= 10 ? 10 : 6};
+    const k = L.filter(s => s.ap).length; if (!k) return null;
+    const alto = lo && lo >= 10;
+    const esq = k === 1 ? [[alto ? 0.5 : 0.6, alto ? 10 : 6]] : k === 2 ? [[0.5, alto ? 10 : 8], [0.75, alto ? 6 : 4]] : [[0.4, 8], [0.6, 5], [0.8, 3]];
+    return esq.map(([pct, r]) => {
+      if (e.modo === "corporal") return {kg:0, reps: Math.max(3, Math.round((lo || 8) * (k === 1 ? 0.5 : pct)))};
+      if (!kg) return {kg:null, reps:r};
+      const lib = bibEj(e.nombre), paso = kg >= 20 ? 2.5 : 1;
+      let a = Math.floor(kg * pct / paso) * paso;
+      if (lib && lib.e === "Barra") a = Math.max(20, a);
+      return {kg: Math.max(paso, a), reps:r};
+    });
   };
   if (e.modo === "marca"){
     const pe = planEj(e.nombre) || {};
@@ -2858,16 +2940,19 @@ function objetivoHTML(e, o){
   const repsTxt = reps.every(x => x === reps[0]) ? `${reps[0] ?? "–"} ${u}` : `${reps.join("/")} ${u}`;
   const ult = o.ref ? `<div class="muted small">Última vez (${ddmm(o.ref.fecha)}): ${esc(o.ref.series.map(s => s.kg ? `${fmt(s.kg,2)}×${s.reps??"–"}` : `${s.reps??"–"}`).join(" · "))}${o.ref.rir!=null&&o.ref.rir!==""?` · RIR ${esc(o.ref.rir)}`:""}</div>` : "";
   const lib = bibEj(e.nombre);
-  const fallo = o.ai && o.aiFase !== "descarga" && o.aiFase !== "adapt" && e.modo !== "cardio";
-  const barra = fallo && lib && BASICO_BARRA.includes(lib.f) && (lib.e === "Barra" || lib.e === "Smith");
+  const v2 = !!(o.ai && fase(S.ed ? S.ed.fecha : hoyISO())?.v2);
+  const fallo = o.ai && o.aiFase !== "descarga" && (v2 || o.aiFase !== "adapt") && e.modo !== "cardio";
+  const barra = fallo && (v2 ? aUnoDelFallo(e) : lib && BASICO_BARRA.includes(lib.f) && (lib.e === "Barra" || lib.e === "Smith"));
+  const nAp = o.ap ? o.ap.length : 0;
   const aviso = o.ai && e.modo !== "cardio" && e.modo !== "tiempo"
-    ? `<div class="muted small">${o.ap ? "<b>A</b> = aproximación: ligera, sin cansarte. " : ""}${o.aiFase === "descarga" ? "Esta semana nada al fallo." : o.aiFase === "adapt" ? "Las efectivas, a 1 rep del fallo: aprende a reconocerlo." : barra ? "Básico con barra: para 1 rep antes de que se rompa la técnica (o usa los seguros)." : "Las efectivas, hasta el fallo: hasta que no salga otra rep con buena técnica."}</div>` : "";
+    ? `<div class="muted small">${nAp ? `<b>A</b> = aproximación${nAp > 1 ? "es" : ""}: ${nAp > 1 ? "subiendo de peso, " : ""}ligera${nAp > 1 ? "s" : ""} y sin cansarte${v2 ? " (no se apuntan en la hoja)" : ""}. ` : ""}${o.aiFase === "descarga" ? "Esta semana nada al fallo: que te sobren 3-4 reps." : !v2 && o.aiFase === "adapt" ? "Las efectivas, a 1 rep del fallo: aprende a reconocerlo." : barra ? (v2 && !(lib && BASICO_BARRA.includes(lib.f)) ? "Las efectivas, a 1 rep del fallo: para cuando solo te quede una con buena técnica." : "Básico con barra: para 1 rep antes de que se rompa la técnica (o usa los seguros).") : "Las efectivas, hasta el fallo: hasta que no salga otra rep con buena técnica."}</div>` : "";
   if (o.tipo === "primera" && !o.ai && (e.modo === "tiempo" || e.modo === "corporal")) return `<div class="hint"><b>Primera vez.</b> Haz ${o.lo ? `${o.lo}${o.hi && o.hi !== o.lo ? "-" + o.hi : ""} ${u}` : "lo que marque el plan"} en cada serie con buena técnica. A partir de la próxima, FIT-ALL te dirá qué toca.</div>`;
-  if (o.tipo === "primera") return `<div class="hint"><b>Primera vez.</b> ${o.ai ? `Haz una serie ligera de aproximación y después busca un peso con el que llegues al fallo` : `Elige un peso con el que te queden ${esc(fase(S.ed.fecha)?.rir || "2 reps de margen")}`}${o.lo ? ` haciendo ${o.lo}${o.hi && o.hi !== o.lo ? "-" + o.hi : ""} ${u}` : ""}. A partir de la próxima, FIT-ALL te dirá qué peso poner.</div>${aviso}`;
+  if (o.tipo === "primera") return `<div class="hint"><b>Primera vez.</b> ${o.ai ? `${nAp > 1 ? `Haz ${nAp} aproximaciones subiendo de peso` : nAp ? "Haz una serie ligera de aproximación" : "Calienta con poco peso"} y después busca un peso con el que llegues ${barra ? "a 1 rep del fallo" : "al fallo"}` : `Elige un peso con el que te queden ${esc(fase(S.ed.fecha)?.rir || "2 reps de margen")}`}${o.lo ? ` haciendo ${o.lo}${o.hi && o.hi !== o.lo ? "-" + o.hi : ""} ${u}` : ""}. A partir de la próxima, FIT-ALL te dirá qué peso poner.</div>${aviso}`;
   if (o.tipo === "cardio") return `<div class="hint"><b>Hoy toca:</b> ${esc(e.objetivo || repsTxt)}</div>${ult}`;
   const n = efs.length;
   const ef = o.kg != null || e.modo === "corporal" ? `${n} × ${kgTxt(o.kg)} × ${repsTxt}` : `${n} × ${repsTxt}`;
-  const apTxt = !o.ap ? "" : e.modo === "corporal" ? `1 aprox. de ${o.ap.reps} reps fáciles + ` : o.ap.kg ? `1 aprox. ${kgTxt(o.ap.kg)} × ${o.ap.reps} + ` : `1 aprox. + `;
+  const apTxt = !o.ap ? "" : e.modo === "corporal" ? `${nAp} aprox. de ${o.ap.map(a => a.reps).join("/")} reps fáciles + `
+    : o.ap[0].kg ? (nAp === 1 ? `1 aprox. ${kgTxt(o.ap[0].kg)} × ${o.ap[0].reps} + ` : `aprox. ${o.ap.map(a => `${fmt(a.kg,2)}×${a.reps}`).join(" · ")} kg + `) : `${nAp} aprox. + `;
   const cab = apTxt + ef + (fallo ? (barra ? " (a 1 del fallo)" : " al fallo") : "");
   const sinKg = e.modo === "kg" && !o.W ? " La última vez no apuntaste el peso: apúntalo hoy y te diré cuándo subir." : "";
   let por = "", cls = "";
