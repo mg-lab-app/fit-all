@@ -345,6 +345,13 @@ hr{border-top-color:rgba(255,255,255,.07)}
 .ses.hecha .ses-ic{border-color:rgba(57,217,106,.6);box-shadow:0 0 0 2px rgba(57,217,106,.18)}
 .ses.hecha .ses-ic::after{content:"✓";position:absolute;bottom:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--green);color:#000;font-size:12px;font-weight:900;display:grid;place-items:center}
 .set.ap .si{color:var(--yellow);font-weight:900}
+.set.tg{grid-template-columns:38px 1fr 14px 1fr 44px}
+.set.tg.solo{grid-template-columns:38px 1fr 44px}
+.set .si{display:flex;flex-direction:column;align-items:center;line-height:1.05}
+.set .si .tg-x{font-size:9.5px;font-weight:700;color:var(--muted);letter-spacing:.02em;margin-top:2px;white-space:nowrap}
+.set.fallo .si{color:var(--red,#ff453a)}
+.set.fallo .si .tg-x{color:#fff;background:var(--red,#ff453a);border-radius:6px;padding:1px 4px;font-weight:900}
+.set.fallo .fld{border-color:color-mix(in srgb,var(--red,#ff453a) 55%,var(--line))}
 .set.ap .fld{border-style:dashed;background:#111114}
 /* Base de la app instalada */
 html{-webkit-text-size-adjust:100%;color-scheme:dark}
@@ -469,12 +476,26 @@ function fase(f){
     r.hi = true;
     r.hiFase = r.ajuste === "menos1" ? "adapt" : r.ajuste === "descarga" ? "descarga" : (sc === L - 1 ? "max" : "int");
     Object.assign(r, HI_FASE[r.hiFase]);
-    if (f >= (m.v2 || METODO_V2)){ r.v2 = true; r.series = "aproximaciones solo donde se indica (no se apuntan)"; }
+    if (f >= (m.v2 || METODO_V2)){ r.v2 = true; r.series = "aproximaciones solo donde se indica (no se apuntan)"; if (r.ciclo >= 3 && HI_FASE3[r.hiFase]) Object.assign(r, HI_FASE3[r.hiFase]); }
   }
   return r;
 }
 // Desde aquí cada ejercicio lleva sus propias aproximaciones (0-3) y sus series efectivas, como en la hoja
 const METODO_V2 = "2026-11-05";
+const RIR_INT = "0-1 reps de margen: al fallo en aislamiento, máquinas, poleas y peso corporal · a 1 del fallo en básicos con barra";
+const HI_FASE3 = {
+  adapt: {nombre:"Reintroducción", rir:"1-2 reps de margen en todos los ejercicios (nada al fallo)"},
+  int: {nombre:"Intensidad", rir:RIR_INT},
+  max: {nombre:"Intensidad máxima", rir:RIR_INT}
+};
+// Esfuerzo de cada serie efectiva (método v2): qué margen dejar y cuál va al fallo
+function esfuerzoSerie(e, f, i, total){
+  if (!f || !f.v2 || !esHI(e, f)) return null;
+  if (f.hiFase === "descarga") return {t:"3-4", d:"deja 3-4 reps"};
+  if (f.hiFase === "adapt") return {t:"1-2", d:"deja 1-2 reps"};
+  if (aUnoDelFallo(e)) return {t:"1", d:"deja 1 rep"};
+  return i >= total - 1 ? {t:"FALLO", d:"al fallo", fallo:true} : {t:"0-1", d:"deja 0-1 reps"};
+}
 const HI_FASE = {
   adapt: {nombre:"Adaptación al fallo", rir:"Efectivas a 1 rep del fallo", series:"1 de aproximación + 1-3 efectivas"},
   int: {nombre:"Intensidad", rir:"Efectivas al fallo (a 1 rep en básicos con barra)", series:"1 de aproximación + 1-3 efectivas"},
@@ -519,7 +540,7 @@ function objetivoTxt(e, f, conFallo){
   if (!m) return o;
   const a = nAprox(e, f), desc = f.hiFase === "descarga", resto = desc || conFallo ? m[2].replace(/\s*\/.*$/, "") : m[2];
   if (!f.v2) return `1 aprox + ${efectivas(e, f)} × ${resto}`;
-  const suf = !conFallo ? "" : desc ? " (descarga: 3-4 reps de margen)" : aUnoDelFallo(e) ? " (a 1 del fallo)" : " al fallo";
+  const suf = !conFallo ? "" : desc ? " (descarga: 3-4 reps de margen)" : f.hiFase === "adapt" ? " (a 1-2 del fallo)" : aUnoDelFallo(e) ? " (a 1 del fallo)" : " al fallo";
   return `${a ? a + " aprox + " : ""}${efectivas(e, f)} × ${resto}${suf}`;
 }
 function seriesSugeridas(objetivo, f){
@@ -1038,13 +1059,15 @@ function vEntreno(){
       const uKg = e.modo==="corporal" ? "+kg" : "kg";
       let nEf = 0, nAp = 0;
       const variasAp = e.series.filter(x => x.ap).length > 1;
+      const totEf = efec(e.series).length;
       const sets = e.series.map((s, si) => {
         const ph = og.series[si] || null;
         const etq = s.ap ? (variasAp ? "A" + (++nAp) : "A") : String(++nEf), nom = s.ap ? "aproximación" : `serie ${nEf}`;
+        const esf = s.ap ? null : esfuerzoSerie(e, f, nEf - 1, totEf);
         const phKg = ph && ph.kg ? fmt(ph.kg,2) : (e.modo==="corporal"?"0":"");
         const phR = ph && ph.reps!=null ? String(ph.reps) : "";
-        return `<div class="set ${solo?"solo":""} ${s.ok?"ok":""} ${s.ap?"ap":""}">
-          <span class="si" title="${s.ap ? "Serie de aproximación" : ""}">${etq}</span>
+        return `<div class="set ${solo?"solo":""} ${s.ok?"ok":""} ${s.ap?"ap":""} ${esf || (s.ap && f && f.v2) ? "tg" : ""} ${esf && esf.fallo ? "fallo" : ""}">
+          <span class="si" title="${s.ap ? "Serie de aproximación" : esf ? esc(esf.d) : ""}">${etq}${esf ? `<small class="tg-x">${esf.t}</small>` : ""}</span>
           ${solo?"":`<label class="fld"><input id="kg-${ei}-${si}" data-in="kg" data-e="${ei}" data-s="${si}" inputmode="decimal" value="${esc(s.kg)}" placeholder="${phKg}" aria-label="Kilos ${nom}"><span>${uKg}</span></label><span class="x">×</span>`}
           <label class="fld"><input id="rp-${ei}-${si}" data-in="reps" data-e="${ei}" data-s="${si}" inputmode="decimal" value="${esc(s.reps)}" placeholder="${phR}" aria-label="${uRep} ${nom}"><span>${uRep}</span></label>
           <button class="chk" data-act="check" data-e="${ei}" data-s="${si}" aria-label="${nom} hecha" aria-pressed="${!!s.ok}">✓</button>
@@ -2941,19 +2964,20 @@ function objetivoHTML(e, o){
   const ult = o.ref ? `<div class="muted small">Última vez (${ddmm(o.ref.fecha)}): ${esc(o.ref.series.map(s => s.kg ? `${fmt(s.kg,2)}×${s.reps??"–"}` : `${s.reps??"–"}`).join(" · "))}${o.ref.rir!=null&&o.ref.rir!==""?` · RIR ${esc(o.ref.rir)}`:""}</div>` : "";
   const lib = bibEj(e.nombre);
   const v2 = !!(o.ai && fase(S.ed ? S.ed.fecha : hoyISO())?.v2);
-  const fallo = o.ai && o.aiFase !== "descarga" && (v2 || o.aiFase !== "adapt") && e.modo !== "cardio";
+  const fallo = o.ai && o.aiFase !== "descarga" && o.aiFase !== "adapt" && e.modo !== "cardio";
+  const reintro = v2 && o.ai && o.aiFase === "adapt" && e.modo !== "cardio";
   const barra = fallo && (v2 ? aUnoDelFallo(e) : lib && BASICO_BARRA.includes(lib.f) && (lib.e === "Barra" || lib.e === "Smith"));
   const nAp = o.ap ? o.ap.length : 0;
   const aviso = o.ai && e.modo !== "cardio" && e.modo !== "tiempo"
-    ? `<div class="muted small">${nAp ? `<b>A</b> = aproximación${nAp > 1 ? "es" : ""}: ${nAp > 1 ? "subiendo de peso, " : ""}ligera${nAp > 1 ? "s" : ""} y sin cansarte${v2 ? " (no se apuntan en la hoja)" : ""}. ` : ""}${o.aiFase === "descarga" ? "Esta semana nada al fallo: que te sobren 3-4 reps." : !v2 && o.aiFase === "adapt" ? "Las efectivas, a 1 rep del fallo: aprende a reconocerlo." : barra ? (v2 && !(lib && BASICO_BARRA.includes(lib.f)) ? "Las efectivas, a 1 rep del fallo: para cuando solo te quede una con buena técnica." : "Básico con barra: para 1 rep antes de que se rompa la técnica (o usa los seguros).") : "Las efectivas, hasta el fallo: hasta que no salga otra rep con buena técnica."}</div>` : "";
+    ? `<div class="muted small">${nAp ? `<b>A</b> = ${nAp > 1 ? "aproximaciones" : "aproximación"}: ${nAp > 1 ? "subiendo de peso, " : ""}ligera${nAp > 1 ? "s" : ""} y sin cansarte${v2 ? " (no se apuntan en la hoja)" : ""}. ` : ""}${o.aiFase === "descarga" ? `Esta semana nada al fallo: que te sobren 3-4 reps${v2 ? " en cada serie" : ""}.` : reintro ? "Semana de reintroducción: deja 1-2 reps en todas las series. Nada al fallo." : !v2 && o.aiFase === "adapt" ? "Las efectivas, a 1 rep del fallo: aprende a reconocerlo." : v2 && barra ? "Todas las efectivas a 1 rep del fallo: para cuando solo te quede una con buena técnica. Este no se lleva al fallo." : v2 ? `${o.nEf > 1 ? "Las primeras efectivas, dejando 0-1 reps. La última (en rojo), " : "La efectiva, "}<b>al fallo</b>: hasta que no salga otra rep con buena técnica.` : barra ? "Básico con barra: para 1 rep antes de que se rompa la técnica (o usa los seguros)." : "Las efectivas, hasta el fallo: hasta que no salga otra rep con buena técnica."}${v2 ? " El número pequeño de cada serie son las reps que te deben sobrar." : ""}</div>` : "";
   if (o.tipo === "primera" && !o.ai && (e.modo === "tiempo" || e.modo === "corporal")) return `<div class="hint"><b>Primera vez.</b> Haz ${o.lo ? `${o.lo}${o.hi && o.hi !== o.lo ? "-" + o.hi : ""} ${u}` : "lo que marque el plan"} en cada serie con buena técnica. A partir de la próxima, FIT-ALL te dirá qué toca.</div>`;
-  if (o.tipo === "primera") return `<div class="hint"><b>Primera vez.</b> ${o.ai ? `${nAp > 1 ? `Haz ${nAp} aproximaciones subiendo de peso` : nAp ? "Haz una serie ligera de aproximación" : "Calienta con poco peso"} y después busca un peso con el que llegues ${barra ? "a 1 rep del fallo" : "al fallo"}` : `Elige un peso con el que te queden ${esc(fase(S.ed.fecha)?.rir || "2 reps de margen")}`}${o.lo ? ` haciendo ${o.lo}${o.hi && o.hi !== o.lo ? "-" + o.hi : ""} ${u}` : ""}. A partir de la próxima, FIT-ALL te dirá qué peso poner.</div>${aviso}`;
+  if (o.tipo === "primera") return `<div class="hint"><b>Primera vez.</b> ${o.ai ? `${nAp > 1 ? `Haz ${nAp} aproximaciones subiendo de peso` : nAp ? "Haz una serie ligera de aproximación" : "Calienta con poco peso"} y después busca un peso con el que llegues ${reintro ? "a 1-2 reps del fallo" : o.aiFase === "descarga" ? "con 3-4 reps de margen" : barra ? "a 1 rep del fallo" : "al fallo"}` : `Elige un peso con el que te queden ${esc(fase(S.ed.fecha)?.rir || "2 reps de margen")}`}${o.lo ? ` haciendo ${o.lo}${o.hi && o.hi !== o.lo ? "-" + o.hi : ""} ${u}` : ""}. A partir de la próxima, FIT-ALL te dirá qué peso poner.</div>${aviso}`;
   if (o.tipo === "cardio") return `<div class="hint"><b>Hoy toca:</b> ${esc(e.objetivo || repsTxt)}</div>${ult}`;
   const n = efs.length;
   const ef = o.kg != null || e.modo === "corporal" ? `${n} × ${kgTxt(o.kg)} × ${repsTxt}` : `${n} × ${repsTxt}`;
   const apTxt = !o.ap ? "" : e.modo === "corporal" ? `${nAp} aprox. de ${o.ap.map(a => a.reps).join("/")} reps fáciles + `
     : o.ap[0].kg ? (nAp === 1 ? `1 aprox. ${kgTxt(o.ap[0].kg)} × ${o.ap[0].reps} + ` : `aprox. ${o.ap.map(a => `${fmt(a.kg,2)}×${a.reps}`).join(" · ")} kg + `) : `${nAp} aprox. + `;
-  const cab = apTxt + ef + (fallo ? (barra ? " (a 1 del fallo)" : " al fallo") : "");
+  const cab = apTxt + ef + (reintro ? " (a 1-2 del fallo)" : !fallo ? "" : barra ? " (a 1 del fallo)" : v2 ? (n > 1 ? " · la última al fallo" : " al fallo") : " al fallo");
   const sinKg = e.modo === "kg" && !o.W ? " La última vez no apuntaste el peso: apúntalo hoy y te diré cuándo subir." : "";
   let por = "", cls = "";
   const W = o.W != null ? kgTxt(o.W) : "";
