@@ -345,6 +345,8 @@ hr{border-top-color:rgba(255,255,255,.07)}
 .ses.hecha .ses-ic{border-color:rgba(57,217,106,.6);box-shadow:0 0 0 2px rgba(57,217,106,.18)}
 .ses.hecha .ses-ic::after{content:"✓";position:absolute;bottom:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--green);color:#000;font-size:12px;font-weight:900;display:grid;place-items:center}
 .set.ap .si{color:var(--yellow);font-weight:900}
+.agarre{margin-top:4px;padding:6px 9px;border-radius:10px;background:var(--surface-2);color:var(--fg);line-height:1.35}
+.agarre b{color:var(--neon)}
 .set.tg{grid-template-columns:38px 1fr 14px 1fr 44px}
 .set.tg.solo{grid-template-columns:38px 1fr 44px}
 .set .si{display:flex;flex-direction:column;align-items:center;line-height:1.05}
@@ -689,12 +691,28 @@ function planV2(){
   });
   return hecho;
 }
+// Hoja del 16/11/2026: agarre y técnica de cada ejercicio de fuerza
+const PLAN_AGARRE = {"1": {"Press de banca con barra": ["Prono, algo más ancho que los hombros (antebrazos verticales abajo), pulgar rodeando la barra y muñeca recta", "Escápulas juntas y pies firmes. Baja la barra a la parte baja del pecho."], "Press inclinado con mancuernas": ["Semiprono, mancuernas giradas unos 45° (ni del todo neutras ni del todo pronas)", "Banco a 30-45°. Codos a unos 45° del tronco."], "Cruces en polea alta": ["Asas sueltas, palmas mirándose al juntar", "Codos algo flexionados y fijos. Aprieta al juntar las manos."], "Fondos en paralelas": ["Neutro en las paralelas; tronco inclinado adelante para pecho", "Inclinado adelante = más pecho. Añade lastre cuando hagas 12 limpias."], "Press francés con barra Z": ["Zona interna de la barra Z (semiprono), manos a unos 15-20 cm", "Codos fijos apuntando al techo. Baja la barra hacia la frente."], "Extensión en polea alta con cuerda": ["Cuerda, neutro; separa los extremos al estirar", "Codos pegados al cuerpo. Abre la cuerda al final."]}, "2": {"Dominadas": ["Prono, 1,2-1,5 veces la anchura de los hombros; tira llevando los codos hacia abajo y atrás", "Lleva el pecho a la barra. Si no llegas a 5, máquina asistida o jalón."], "Remo con barra": ["Prono, a la anchura de los hombros o algo más; codos a unos 45° del tronco", "Tronco a 30-45°, espalda neutra. Tira hacia el ombligo."], "Remo sentado en polea baja": ["Para zona media: barra recta prona y ancha, codos abiertos (60-70°) tirando al pecho bajo · con el triángulo (V) se trabaja más el dorsal", "Pecho alto. Junta las escápulas al final del tirón."], "Curl con barra": ["Supino a la anchura de los hombros (con barra Z, en la zona externa)", "Sin balanceo. Los codos no se mueven."], "Curl martillo alterno": ["Neutro (pulgares arriba) todo el recorrido", "Agarre neutro. Baja en 2-3 s."]}, "4": {"Sentadilla trasera con barra": ["Manos tan juntas como permita tu movilidad de hombro, barra sobre el trapecio y muñecas rectas", "Baja al menos a paralelo. Rodillas en la línea de los pies. Barras de seguridad."], "Sentadilla búlgara": ["Mancuernas a los lados, neutro", "Pie trasero sobre el banco, tronco erguido."]}, "6": {"Press militar de pie": ["Prono, algo más ancho que los hombros (antebrazos verticales)", "Glúteo y abdomen apretados, sin arquear la espalda."], "Elevaciones laterales": ["Neutro, pulgares ligeramente hacia arriba; no gires la mano como si vaciaras una jarra", "Hasta la altura del hombro, codos algo flexionados."], "Face pull": ["Cuerda con las manos por debajo y pulgares hacia ti; polea a la altura de la cara", "Tira hacia la cara abriendo los codos y rotando hacia fuera."], "Pájaros en contractor inverso": ["Asas horizontales en prono (palmas abajo), codos a la altura de los hombros", "Brazos casi rectos, movimiento lento."], "Encogimientos": ["Neutro, mancuernas a los lados", "Sube en vertical, pausa de 1 s arriba, sin girar los hombros."], "Crunch en polea alta": ["Cuerda junto a la cabeza", "Flexiona la columna, no la cadera."]}, "8": {"Peso muerto convencional": ["Doble prono a la anchura de los hombros; si falla el agarre, usa straps antes que el agarre mixto", "Barra pegada a las piernas, espalda neutra. Empuja el suelo."], "Hip thrust con barra": ["Prono, manos algo más anchas que la cadera solo para estabilizar la barra", "Barbilla recogida. Bloquea arriba apretando el glúteo."]}, "9": {"Press inclinado en máquina Smith": ["Prono, algo más ancho que los hombros", "Banco a 30°. Baja controlado."], "Aperturas en contractor": ["Asas verticales, neutro", "Pausa de 1 s con los brazos cerrados."], "Jalón al pecho": ["Prono 1,2-1,5 veces la anchura de los hombros, o asas neutras anchas; no más ancho, pierdes recorrido", "Barra a la parte alta del pecho, codos hacia abajo."], "Pullover en polea alta": ["Cuerda (más recorrido) o barra recta en prono; codos casi rectos", "De pie y con el tronco algo inclinado. Codos casi rectos y fijos: baja la barra hasta los muslos y sube controlado hasta notar el dorsal estirado, sin encoger los hombros."], "Remo con mancuerna a una mano": ["Neutro; tira hacia la cadera con el codo pegado", "Rodilla y mano en el banco. Tira hacia la cadera."], "Curl en polea baja (superserie A)": ["Barra recta o Z en supino", "Haz A y B seguidos, sin descanso entre ellos."], "Extensión sobre la cabeza (superserie B)": ["Mancuerna en copa, ambas palmas bajo el disco superior", "Codos apuntando al techo."]}};
+function planAgarre(){
+  let hecho = false;
+  S.plan = (S.plan || []).map(s => {
+    const T = PLAN_AGARRE[s.n]; if (!T) return s;
+    let cambia = false;
+    const L = (s.ejercicios || []).map(e => {
+      const t = T[e.nombre]; if (!t || e.agarre !== undefined) return e;
+      cambia = true; return Object.assign({}, e, {agarre:t[0], tecnica:t[1]});
+    });
+    if (!cambia) return s;
+    hecho = true; return Object.assign({}, s, {ejercicios: L});
+  });
+  return hecho;
+}
 function migrarPlan(){
   const P = S.plan || [];
   const viejo = P.some(s => (s.ejercicios||[]).some(e => e.nombre === "Caminata en cinta inclinada" || e.nombre === "Remo ergómetro por intervalos" || e.nombre === "Bicicleta estática suave"));
-  if (!viejo){ const a = anadirPlan(), b = planV2(); if (a || b) escribir("plan/rutina", {sesiones:S.plan}); return; }
+  if (!viejo){ const a = anadirPlan(), b = planV2(), c = planAgarre(); if (a || b || c) escribir("plan/rutina", {sesiones:S.plan}); return; }
   S.plan = P.map(s => CARDIO_NUEVO[s.n] && s.dia && s.turno === "Tarde" ? Object.assign({}, s, JSON.parse(JSON.stringify(CARDIO_NUEVO[s.n]))) : s);
-  anadirPlan(); planV2();
+  anadirPlan(); planV2(); planAgarre();
   escribir("plan/rutina", {sesiones:S.plan});
 }
 async function init(){
@@ -1073,7 +1091,7 @@ function vEntreno(){
           <button class="chk" data-act="check" data-e="${ei}" data-s="${si}" aria-label="${nom} hecha" aria-pressed="${!!s.ok}">✓</button>
         </div>`; }).join("");
       html += `<section class="card ex">
-        <div class="ex-h">${lib ? `<button class="ej-mini" data-act="verEj" data-n="${esc(e.nombre)}" aria-label="Cómo se hace ${esc(e.nombre)}">${animEj(lib) || fotoEj(lib)}</button>` : ""}<div class="grow"><h3>${esc(e.nombre)}</h3><div class="ex-meta">${esc([objetivoTxt(e, f), e.descanso && e.descanso !== "—" ? "descanso " + e.descanso : ""].filter(Boolean).join(" · "))}</div>${pe.nota ? `<div class="muted small" style="margin-top:2px">${esc(pe.nota)}</div>` : ""}
+        <div class="ex-h">${lib ? `<button class="ej-mini" data-act="verEj" data-n="${esc(e.nombre)}" aria-label="Cómo se hace ${esc(e.nombre)}">${animEj(lib) || fotoEj(lib)}</button>` : ""}<div class="grow"><h3>${esc(e.nombre)}</h3><div class="ex-meta">${esc([objetivoTxt(e, f), e.descanso && e.descanso !== "—" ? "descanso " + e.descanso : ""].filter(Boolean).join(" · "))}</div>${pe.agarre ? `<div class="agarre small"><b>✋ Agarre:</b> ${esc(pe.agarre)}</div>` : ""}${pe.nota ? `<div class="muted small" style="margin-top:2px">${esc(pe.nota)}</div>` : ""}
             <button class="lnk-btn" data-act="exCambiar" data-e="${ei}">⇄ Cambiar ejercicio</button></div>
           <button class="iconbtn" data-act="exQuitar" data-e="${ei}" aria-label="Quitar ${esc(e.nombre)} de esta sesión">✕</button></div>
         ${objetivoHTML(e, og)}
@@ -2306,6 +2324,7 @@ function vRutina(){
           <label class="lb">Efectivas<select class="tx" id="re-f-${si}-${ei}" data-r="fallo" data-si="${si}" data-ei="${ei}">${opts({fallo:"Al fallo", a1:"A 1 rep del fallo"}, e.fallo === "a1" ? "a1" : "fallo")}</select></label>
         </div>` : ""}
         ${e.modo === "kg" || e.modo === "corporal" || !e.modo ? `<label class="row small" style="gap:8px"><input type="checkbox" id="re-c-${si}-${ei}" data-r="clasico" data-si="${si}" data-ei="${ei}" ${e.clasico ? "checked" : ""}> Series normales (sin aproximación ni fallo)</label>` : ""}
+        ${e.modo === "kg" || e.modo === "corporal" || !e.modo ? `<label class="lb">Agarre<input class="tx" id="re-g-${si}-${ei}" data-r="agarre" data-si="${si}" data-ei="${ei}" value="${esc(e.agarre||"")}" placeholder="Ej.: prono, algo más ancho que los hombros"></label>` : ""}
         <label class="lb">Nota (cómo se hace)<input class="tx" id="re-x-${si}-${ei}" data-r="nota" data-si="${si}" data-ei="${ei}" value="${esc(e.nota||"")}" placeholder="Opcional"></label>
       </div>`).join("");
     const arm = S.borrarArm === "ses"+si;
@@ -2343,6 +2362,8 @@ async function guardarRutina(){
       if (e.aprox !== undefined && e.aprox !== "") o.aprox = +e.aprox;
       if (e.fallo === "a1") o.fallo = "a1";
       if ((e.nota||"").trim()) o.nota = e.nota.trim();
+      if (e.agarre !== undefined) o.agarre = String(e.agarre).trim();
+      if (e.tecnica) o.tecnica = e.tecnica;
       if (e.hoja && e.nombre.trim() === e.nombreOrig) o.hoja = e.hoja;
       return o;
     })
@@ -2644,6 +2665,8 @@ function fichaHTML(nombre){
     ${(e.p||[]).length ? `<section class="card sec"><span class="eyebrow">Músculos</span>
       <div class="ficha-mus">${mapaEjercicio(e)}<div class="small"><div><span class="dot" style="background:var(--neon)"></span> <b>Principal:</b> ${esc((e.p||[]).map(nombreMus).join(", "))}</div>
       ${(e.s||[]).length ? `<div><span class="dot" style="background:rgba(57,255,20,.4)"></span> <b>Secundario:</b> ${esc(e.s.map(nombreMus).join(", "))}</div>` : ""}</div></div></section>` : ""}
+    ${(() => { const pe = planEj(nombre) || (S.plan||[]).reduce((a, p) => a || (p.ejercicios||[]).find(x => x.agarre && bibEj(x.nombre) === e), null);
+      return pe && (pe.agarre || pe.tecnica) ? `<section class="card sec"><span class="eyebrow">En tu plan</span>${pe.agarre ? `<div class="small"><b>✋ Agarre:</b> ${esc(pe.agarre)}</div>` : ""}${pe.tecnica ? `<div class="small"><b>Técnica:</b> ${esc(pe.tecnica)}</div>` : ""}</section>` : ""; })()}
     ${fam && fam.pasos ? `<section class="card sec"><span class="eyebrow">Cómo se hace</span><ol class="pasos">${fam.pasos.map(p => `<li>${esc(p)}</li>`).join("")}</ol></section>` : ""}
     <section class="card sec"><span class="eyebrow">Tu historial</span>
       ${veces ? `<div class="stats"><div class="stat"><span class="muted small">Sesiones</span><b>${veces}</b></div>
