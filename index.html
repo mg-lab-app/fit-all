@@ -420,11 +420,13 @@ const MODOS = {kg:"Peso (kg × reps)", corporal:"Peso corporal (+lastre)", tiemp
 const MEJOR = {mas:"Cuanto más, mejor", menos:"Cuanto menos, mejor", igual:"Solo apuntarlo"};
 const SEMANAS = {todas:"Todas las semanas", impares:"Semanas impares (1, 3, 5…)", pares:"Semanas pares (2, 4, 6…)"};
 // Datos del ejercicio en la rutina (unidad, nota, nombre en la hoja…)
-function planEj(nombre, n){
-  const L = (S.plan||[]).concat(S.entrenos||[]);
-  const ses = n != null ? L.find(p => p.n === n) : null;
+// Busca primero en la sesión y la rutina de la fecha (la de la sesión abierta si no se indica), después en todas
+function planEj(nombre, n, fecha){
+  if (!fecha && S.ed){ fecha = S.ed.fecha; if (n == null) n = S.ed.n; }
+  const base = fecha ? planDe(fecha) : (S.plan || []);
+  const ses = n != null ? base.find(p => p.n === n) || null : null;
   let e = ses && (ses.ejercicios||[]).find(x => x.nombre === nombre);
-  if (!e) for (const p of L){ e = (p.ejercicios||[]).find(x => x.nombre === nombre); if (e) break; }
+  if (!e) for (const p of base.concat(todasRutinas(), S.entrenos||[])){ e = (p.ejercicios||[]).find(x => x.nombre === nombre); if (e) break; }
   return e || null;
 }
 const tocaSemana = (e, fecha) => { if (!e || !e.semanas || e.semanas === "todas") return true; const f = fase(fecha); if (!f || f.fuera) return true; return (f.semana % 2 === 1) === (e.semanas === "impares"); };
@@ -511,7 +513,7 @@ function efectivasHI(objetivo, f){
   return base >= 4 ? 3 : base === 3 ? 2 : 1;
 }
 // «clasico»: ejercicios que no siguen el método (el core de las tardes de cardio)
-const clasicoEj = e => !!(e && (e.clasico || (e.nombre && (planEj(e.nombre) || {}).clasico)));
+const clasicoEj = e => !!(e && (e.clasico !== undefined ? e.clasico : (e.nombre && (planEj(e.nombre) || {}).clasico)));
 const esHI = (e, f) => !!(f && f.hi && (e.modo === "kg" || e.modo === "corporal" || !e.modo) && !clasicoEj(e));
 const datoPlan = (e, k) => e[k] !== undefined ? e[k] : ((planEj(e.nombre) || {})[k]);
 // Aproximaciones de un ejercicio: 1 en el método antiguo; las del plan desde el método v2
@@ -540,7 +542,7 @@ function objetivoTxt(e, f, conFallo){
   if (!esHI(e, f)) return e.objetivo || "";
   const o = String(e.objetivo || ""), m = o.match(/^(\d+)\s*×\s*(.*)$/);
   if (!m) return o;
-  const a = nAprox(e, f), desc = f.hiFase === "descarga", resto = desc || conFallo ? m[2].replace(/\s*\/.*$/, "") : m[2];
+  const a = nAprox(e, f), desc = f.hiFase === "descarga", resto = (desc || conFallo) && !(f.ciclo >= 3) ? m[2].replace(/\s*\/.*$/, "") : m[2];
   if (!f.v2) return `1 aprox + ${efectivas(e, f)} × ${resto}`;
   const suf = !conFallo ? "" : desc ? " (descarga: 3-4 reps de margen)" : f.hiFase === "adapt" ? " (a 1-2 del fallo)" : aUnoDelFallo(e) ? " (a 1 del fallo)" : " al fallo";
   return `${a ? a + " aprox + " : ""}${efectivas(e, f)} × ${resto}${suf}`;
@@ -612,10 +614,10 @@ function escribir(path, data){
 function borrarDoc(path){ return escribir(path, null); }
 function errGuardar(){ toast("No se pudo guardar en este móvil. Comprueba que no estás en modo privado y que queda espacio."); }
 function repartir(docs){
-  S.plan = []; S.obj = null; S.alimentos = []; S.sesiones = []; S.diario = {}; S.medidas = []; S.entrenos = []; S.ejPropios = []; IDX = null;
+  S.plan = []; S.planDoc = {sesiones:[]}; S.obj = null; S.alimentos = []; S.sesiones = []; S.diario = {}; S.medidas = []; S.entrenos = []; S.ejPropios = []; IDX = null;
   for (const {path, data} of docs){
     const i = path.indexOf("/"), c = path.slice(0, i), id = path.slice(i+1);
-    if (path === "plan/rutina") S.plan = (data && data.sesiones) || [];
+    if (path === "plan/rutina") S.planDoc = data || {sesiones:[]};
     else if (path === "config/objetivos") S.obj = data;
     else if (c === "alimentos") S.alimentos.push(Object.assign({id}, data));
     else if (c === "sesiones") S.sesiones.push(Object.assign({id}, data));
@@ -627,9 +629,31 @@ function repartir(docs){
   S.alimentos.sort((a,b) => a.nombre.localeCompare(b.nombre, "es"));
   S.sesiones.sort((a,b) => a.fecha<b.fecha?1 : a.fecha>b.fecha?-1 : (b.n||0)-(a.n||0));
   S.medidas.sort((a,b) => a.fecha<b.fecha?-1 : 1);
+  S.plan = planDe(hoyISO());
   S.cargado.plan = S.cargado.obj = S.cargado.sesiones = true;
   migrarPlan();
 }
+// Rutina que toca en una fecha (el bloque nuevo empieza en «desde»; los anteriores acaban en «hasta»)
+function planDe(fecha){
+  const d = S.planDoc || {}, ant = (d.anteriores || []).slice().sort((a, b) => a.hasta < b.hasta ? -1 : 1);
+  if (d.desde && fecha < d.desde && ant.length){ const a = ant.find(x => fecha <= x.hasta) || ant[ant.length - 1]; return a.sesiones || []; }
+  return d.sesiones || [];
+}
+// Todas las sesiones de todas las rutinas (la de hoy primero), para buscar ejercicios por nombre
+const todasRutinas = () => (S.plan || []).concat((S.planDoc || {}).sesiones || [], ...((S.planDoc || {}).anteriores || []).map(a => a.sesiones || []));
+function guardarPlanDoc(){ return escribir("plan/rutina", S.planDoc); }
+// Guarda la rutina que toca hoy dentro de su bloque
+function ponerRutinaHoy(L){
+  const d = S.planDoc || (S.planDoc = {sesiones:[]}), hoy = hoyISO();
+  if (d.desde && hoy < d.desde && (d.anteriores || []).length){
+    const ant = d.anteriores.slice().sort((a, b) => a.hasta < b.hasta ? -1 : 1), a = ant.find(x => hoy <= x.hasta) || ant[ant.length - 1];
+    a.sesiones = L;
+  } else d.sesiones = L;
+  S.plan = planDe(hoy);
+}
+// Ciclo 3 (semanas 9-12, desde el 23/11/2026): rutina nueva de la hoja, 8 sesiones
+const C3_DESDE = "2026-11-23";
+const PLAN_C3 = [{"n": 1, "dia": "Lunes", "turno": "Tarde", "nombre": "Empuje A (pecho pesado)", "tipo": "Fuerza", "duracion": "70-80 min", "ejercicios": [{"nombre": "Press de banca con barra", "modo": "kg", "objetivo": "4 × 5-8", "descanso": "2-3 min", "aprox": 3, "fallo": "a1", "tecnica": "Agarre prono algo más ancho que los hombros, pulgar rodeando la barra. Escápulas juntas, baja a la parte baja del pecho."}, {"nombre": "Press inclinado con mancuernas", "modo": "kg", "objetivo": "3 × 8-10", "descanso": "2 min", "aprox": 1, "tecnica": "Mancuernas giradas unos 45°. Banco a 30-45°, codos a unos 45° del tronco."}, {"nombre": "Cruces en polea alta", "modo": "kg", "objetivo": "3 × 12-15", "descanso": "60-90 s", "aprox": 0, "tecnica": "Asas sueltas, palmas mirándose al juntar. Codos algo flexionados y fijos."}, {"nombre": "Press francés con barra Z", "modo": "kg", "objetivo": "3 × 8-10", "descanso": "90 s", "aprox": 1, "tecnica": "Zona interna de la barra Z. Codos fijos apuntando al techo, baja hacia la frente."}, {"nombre": "Extensión en polea alta con cuerda", "modo": "kg", "objetivo": "3 × 12-15", "descanso": "60 s", "aprox": 0, "tecnica": "Cuerda, agarre neutro. Codos pegados al cuerpo, separa los extremos al final."}]}, {"n": 2, "dia": "Martes", "turno": "Mañana", "nombre": "Pierna A (cuádriceps)", "tipo": "Fuerza", "duracion": "80-90 min", "ejercicios": [{"nombre": "Sentadilla trasera con barra", "modo": "kg", "objetivo": "4 × 5-8", "descanso": "3 min", "aprox": 3, "fallo": "a1", "tecnica": "Manos tan juntas como permita tu hombro. Baja al menos a paralelo, usa barras de seguridad."}, {"nombre": "Curl femoral tumbado", "modo": "kg", "objetivo": "3 × 10-12", "descanso": "90 s", "aprox": 1, "tecnica": "Cadera pegada al banco, sube rápido y baja en 3 s."}, {"nombre": "Zancada hacia atrás con mancuernas", "modo": "kg", "objetivo": "3 × 8-10 / pierna", "descanso": "90 s", "aprox": 0, "tecnica": "Mancuernas a los lados (neutro). Paso largo atrás, rodilla de atrás casi al suelo, tronco erguido; empuja con la pierna de delante."}, {"nombre": "Extensión de cuádriceps", "modo": "kg", "objetivo": "3 × 12-15", "descanso": "60 s", "aprox": 0, "tecnica": "Pausa de 1 s arriba y baja en 3 s."}, {"nombre": "Abducción de cadera en máquina", "modo": "kg", "objetivo": "3 × 15-20", "descanso": "60 s", "aprox": 0, "tecnica": "Espalda apoyada; abre, aguanta 1 s y vuelve despacio sin dejar caer el peso."}, {"nombre": "Elevación de talones de pie", "modo": "kg", "objetivo": "3 × 12-20", "descanso": "60 s", "aprox": 1, "tecnica": "Estira 2 s abajo y sube del todo."}]}, {"n": 3, "dia": "Martes", "turno": "Tarde", "nombre": "Tirón A (amplitud de espalda)", "tipo": "Fuerza", "duracion": "65-75 min", "ejercicios": [{"nombre": "Dominadas", "modo": "corporal", "objetivo": "4 × 5-8", "descanso": "2-3 min", "aprox": 2, "tecnica": "Agarre prono a 1,2-1,5 veces la anchura de los hombros. Codos hacia abajo y atrás, pecho a la barra."}, {"nombre": "Remo con barra", "modo": "kg", "objetivo": "4 × 6-8", "descanso": "2 min", "aprox": 1, "fallo": "a1", "tecnica": "Agarre prono a la anchura de los hombros. Tronco a 30-45°, codos a unos 45°, tira al ombligo."}, {"nombre": "Pullover en polea alta", "modo": "kg", "objetivo": "3 × 12-15", "descanso": "60-90 s", "aprox": 0, "tecnica": "Cuerda o barra recta. Codos casi rectos, baja hasta los muslos y sube hasta notar el dorsal estirado."}, {"nombre": "Curl con barra", "modo": "kg", "objetivo": "3 × 8-10", "descanso": "90 s", "aprox": 1, "tecnica": "Agarre supino a la anchura de los hombros. Codos quietos, sin balanceo."}, {"nombre": "Curl martillo alterno", "modo": "kg", "objetivo": "3 × 10-12", "descanso": "60 s", "aprox": 0, "tecnica": "Agarre neutro (pulgares arriba). Baja en 2-3 s."}]}, {"n": 4, "dia": "Miércoles", "turno": "Mañana", "nombre": "Hombro lateral y posterior", "tipo": "Corta", "duracion": "30-35 min", "ejercicios": [{"nombre": "Elevaciones laterales", "modo": "kg", "objetivo": "4 × 12-20", "descanso": "60 s", "aprox": 1, "tecnica": "Agarre neutro, pulgares algo hacia arriba. Sube hasta la altura del hombro con los codos algo flexionados."}, {"nombre": "Elevación lateral en polea a una mano", "modo": "kg", "objetivo": "3 × 12-20 / brazo", "descanso": "45-60 s", "aprox": 0, "tecnica": "Polea baja, agarre neutro, cable por delante del cuerpo. Sube hasta la altura del hombro."}, {"nombre": "Pájaros en polea", "modo": "kg", "objetivo": "3 × 15-20", "descanso": "60 s", "aprox": 0, "tecnica": "Poleas a la altura de los hombros y cables cruzados (cada mano coge el cable del lado contrario). Brazos casi rectos, abre hacia atrás."}]}, {"n": 5, "dia": "Miércoles", "turno": "Tarde", "nombre": "Core", "tipo": "Corta", "duracion": "20-25 min", "ejercicios": [{"nombre": "Rueda abdominal", "modo": "corporal", "objetivo": "3 × 8-12", "descanso": "60 s", "aprox": 0, "tecnica": "Solo el rango que controles sin arquear la espalda."}, {"nombre": "Crunch en polea alta", "modo": "kg", "objetivo": "3 × 12-15", "descanso": "60 s", "aprox": 0, "tecnica": "Cuerda junto a la cabeza. Flexiona la columna, no la cadera."}, {"nombre": "Elevación de piernas colgado", "modo": "corporal", "objetivo": "3 × 10-15", "descanso": "60 s", "aprox": 0, "tecnica": "Sin balanceo; si cuesta, lleva las rodillas al pecho."}, {"nombre": "Pallof press", "modo": "kg", "objetivo": "3 × 10 / lado", "descanso": "45 s", "aprox": 0, "tecnica": "Polea a la altura del pecho. Empuja al frente y aguanta sin dejarte girar."}]}, {"n": 6, "dia": "Jueves", "turno": "Tarde", "nombre": "Empuje B (hombro pesado)", "tipo": "Fuerza", "duracion": "75-85 min", "ejercicios": [{"nombre": "Press militar de pie", "modo": "kg", "objetivo": "4 × 5-8", "descanso": "2-3 min", "aprox": 3, "fallo": "a1", "tecnica": "Agarre prono algo más ancho que los hombros. Glúteo y abdomen apretados, sin arquear la espalda."}, {"nombre": "Press inclinado en máquina Smith", "modo": "kg", "objetivo": "3 × 8-10", "descanso": "2 min", "aprox": 1, "tecnica": "Agarre prono algo más ancho que los hombros. Banco a 30°, baja controlado."}, {"nombre": "Fondos en paralelas", "modo": "corporal", "objetivo": "3 × 8-12", "descanso": "90 s", "aprox": 0, "tecnica": "Agarre neutro. Tronco inclinado adelante para trabajar más el pecho."}, {"nombre": "Aperturas en contractor", "modo": "kg", "objetivo": "3 × 12-15", "descanso": "60 s", "aprox": 0, "tecnica": "Asas verticales, agarre neutro. Pausa de 1 s con los brazos cerrados."}, {"nombre": "Elevaciones laterales", "modo": "kg", "objetivo": "3 × 12-20", "descanso": "60 s", "aprox": 0, "tecnica": "Agarre neutro, pulgares algo hacia arriba. Sube hasta la altura del hombro con los codos algo flexionados."}, {"nombre": "Extensión sobre la cabeza con mancuerna", "modo": "kg", "objetivo": "3 × 12-15", "descanso": "60-90 s", "aprox": 0, "tecnica": "Mancuerna en copa (palmas bajo el disco superior). Codos apuntando al techo.", "antes": ["Extensión sobre la cabeza (superserie B)"]}]}, {"n": 7, "dia": "Viernes", "turno": "Mañana", "nombre": "Pierna B (femoral y glúteo)", "tipo": "Fuerza", "duracion": "80-90 min", "ejercicios": [{"nombre": "Peso muerto convencional", "modo": "kg", "objetivo": "4 × 4-6", "descanso": "3 min", "aprox": 3, "fallo": "a1", "tecnica": "Doble prono a la anchura de los hombros; si falla el agarre, straps. Barra pegada a las piernas, espalda neutra."}, {"nombre": "Hip thrust con barra", "modo": "kg", "objetivo": "4 × 8-10", "descanso": "2 min", "aprox": 1, "fallo": "a1", "tecnica": "Manos sujetando la barra. Barbilla recogida, bloquea arriba apretando el glúteo."}, {"nombre": "Prensa inclinada 45°", "modo": "kg", "objetivo": "3 × 10-12", "descanso": "2 min", "aprox": 0, "tecnica": "Pies a la anchura de las caderas, sin despegar la pelvis del respaldo."}, {"nombre": "Patada de glúteo en polea", "modo": "kg", "objetivo": "3 × 12-15 / pierna", "descanso": "60 s", "aprox": 0, "tecnica": "Polea baja con tobillera. Tronco fijo, empuja atrás y arriba sin arquear la lumbar.", "hoja": "Patada de glúteo en polea (por pierna)"}, {"nombre": "Elevación de talones sentado", "modo": "kg", "objetivo": "3 × 12-20", "descanso": "60 s", "aprox": 1, "tecnica": "Discos sobre las rodillas o barra del Smith. Rango completo con pausa abajo.", "hoja": "Elevación de talones sentado (con discos o en Smith)"}]}, {"n": 8, "dia": "Viernes", "turno": "Tarde", "nombre": "Tirón B (grosor de espalda)", "tipo": "Fuerza", "duracion": "70-80 min", "ejercicios": [{"nombre": "Jalón al pecho", "modo": "kg", "objetivo": "3 × 10-12", "descanso": "90 s", "aprox": 1, "tecnica": "Agarre prono a 1,2-1,5 veces la anchura de los hombros (o asas neutras anchas). Barra a la parte alta del pecho."}, {"nombre": "Remo sentado en polea baja", "modo": "kg", "objetivo": "3 × 10-12", "descanso": "90 s", "aprox": 0, "tecnica": "Barra recta, agarre prono ancho. Codos abiertos (60-70°), tira hacia la parte baja del pecho.", "hoja": "Remo sentado en polea (barra ancha)"}, {"nombre": "Remo con mancuerna a una mano", "modo": "kg", "objetivo": "3 × 10-12 / lado", "descanso": "60-90 s", "aprox": 0, "tecnica": "Agarre neutro. Rodilla y mano en el banco, tira hacia la cadera con el codo pegado."}, {"nombre": "Face pull", "modo": "kg", "objetivo": "3 × 15-20", "descanso": "60 s", "aprox": 0, "tecnica": "Cuerda con las manos por debajo y pulgares hacia ti. Polea a la altura de la cara, abre los codos."}, {"nombre": "Encogimientos", "modo": "kg", "objetivo": "3 × 10-12", "descanso": "60 s", "aprox": 1, "tecnica": "Mancuernas a los lados (neutro). Sube en vertical con pausa de 1 s."}, {"nombre": "Curl en banco predicador (barra Z)", "modo": "kg", "objetivo": "3 × 10-12", "descanso": "60-90 s", "aprox": 0, "tecnica": "Barra Z por la zona externa (supino), axilas pegadas al cojín; baja hasta casi estirar."}]}];
 // Octubre 2026: las tardes de cardio pasan a pruebas con marca (igual que en la hoja)
 const CARDIO_NUEVO = {
   3: {nombre:"Cardio en cinta + core", tipo:"Ligera", duracion:"≈30 min", ejercicios:[
@@ -708,12 +732,18 @@ function planAgarre(){
   return hecho;
 }
 function migrarPlan(){
-  const P = S.plan || [];
+  const d = S.planDoc || {};
+  if (d.desde) return;                       // ya tiene el ciclo 3: nada que migrar
+  S.plan = d.sesiones || [];
+  const P = S.plan;
+  if (!P.length) return;
   const viejo = P.some(s => (s.ejercicios||[]).some(e => e.nombre === "Caminata en cinta inclinada" || e.nombre === "Remo ergómetro por intervalos" || e.nombre === "Bicicleta estática suave"));
-  if (!viejo){ const a = anadirPlan(), b = planV2(), c = planAgarre(); if (a || b || c) escribir("plan/rutina", {sesiones:S.plan}); return; }
-  S.plan = P.map(s => CARDIO_NUEVO[s.n] && s.dia && s.turno === "Tarde" ? Object.assign({}, s, JSON.parse(JSON.stringify(CARDIO_NUEVO[s.n]))) : s);
+  if (viejo) S.plan = P.map(s => CARDIO_NUEVO[s.n] && s.dia && s.turno === "Tarde" ? Object.assign({}, s, JSON.parse(JSON.stringify(CARDIO_NUEVO[s.n]))) : s);
   anadirPlan(); planV2(); planAgarre();
-  escribir("plan/rutina", {sesiones:S.plan});
+  // La rutina de las semanas 1-8 se guarda como «anterior» y el ciclo 3 pasa a ser la rutina desde el 23/11
+  S.planDoc = {sesiones: JSON.parse(JSON.stringify(PLAN_C3)), desde: C3_DESDE, anteriores: [{hasta: addDias(C3_DESDE, -1), sesiones: S.plan}]};
+  S.plan = planDe(hoyISO());
+  guardarPlanDoc();
 }
 async function init(){
   render();
@@ -752,7 +782,8 @@ async function leerCopia(file){
 async function aplicarCopia(d){
   const ops = [];
   if (d.objetivos) ops.push(["config/objetivos", d.objetivos]);
-  if (Array.isArray(d.rutina)) ops.push(["plan/rutina", {sesiones: d.rutina}]);
+  if (d.planDoc && Array.isArray(d.planDoc.sesiones)) ops.push(["plan/rutina", d.planDoc]);
+  else if (Array.isArray(d.rutina)) ops.push(["plan/rutina", {sesiones: d.rutina}]);
   (d.sesiones||[]).forEach(x => { const {id, ...r} = x; ops.push(["sesiones/" + (id || `${x.fecha}_${x.n}`), r]); });
   Object.entries(d.diario||{}).forEach(([k, v]) => ops.push(["diario/" + k, v]));
   (d.medidas||[]).forEach(x => { const {id, ...r} = x; ops.push(["medidas/" + (id || x.fecha), r]); });
@@ -769,7 +800,7 @@ async function aplicarCopia(d){
   toast(`Copia cargada: ${resumenCopia(d)}.`);
 }
 async function exportar(){
-  const data = JSON.stringify({app:"FIT-ALL", formato:1, exportado:new Date().toISOString(), objetivos:S.obj, rutina:S.plan, sesiones:S.sesiones, diario:S.diario, medidas:S.medidas, alimentos:S.alimentos, entrenos:S.entrenos, ejerciciosPropios:S.ejPropios}, null, 2);
+  const data = JSON.stringify({app:"FIT-ALL", formato:1, exportado:new Date().toISOString(), objetivos:S.obj, rutina:S.plan, planDoc:S.planDoc, sesiones:S.sesiones, diario:S.diario, medidas:S.medidas, alimentos:S.alimentos, entrenos:S.entrenos, ejerciciosPropios:S.ejPropios}, null, 2);
   const nombre = `fit-all-copia-${hoyISO()}.json`;
   let file = null;
   try { file = new File([data], nombre, {type:"application/json"}); } catch(e) {}
@@ -970,12 +1001,12 @@ function nuevaDesdePlan(fecha, ses){
 }
 function plantillaEd(){
   if (!S.ed) return null;
-  return (S.plan||[]).find(p => p.n === S.ed.n) || (S.entrenos||[]).find(p => p.n === S.ed.n) || null;
+  return planDe(S.ed.fecha).find(p => p.n === S.ed.n) || (S.entrenos||[]).find(p => p.n === S.ed.n) || null;
 }
 function datosPlanEj(nombre){
   const t = plantillaEd();
   let e = t && (t.ejercicios||[]).find(x => x.nombre === nombre);
-  if (!e) for (const p of (S.plan||[]).concat(S.entrenos||[])){ e = (p.ejercicios||[]).find(x => x.nombre === nombre); if (e) break; }
+  if (!e) for (const p of planDe(S.ed.fecha).concat(todasRutinas(), S.entrenos||[])){ e = (p.ejercicios||[]).find(x => x.nombre === nombre); if (e) break; }
   return e || null;
 }
 function nuevoEjEd(nombre){
@@ -1025,7 +1056,7 @@ function abrirSesion(fecha, n){
   n = +n;
   const id = `${fecha}_${n}`;
   const g = S.sesiones.find(s => s.id === id);
-  let ses = (S.plan||[]).find(p => p.n === n) || (S.entrenos||[]).find(p => p.n === n);
+  let ses = n < 1000 && planDe(fecha).find(p => p.n === n) || (S.entrenos||[]).find(p => p.n === n);
   if (!ses && g) ses = {n, nombre:g.nombre, ejercicios:[]};
   if (!ses && n >= 1000) ses = {n, nombre:"Entreno libre", ejercicios:[]};
   if (!ses) { toast("No encuentro esa sesión en tu rutina."); return; }
@@ -1048,9 +1079,9 @@ function guardarBorrador(){
 function vEntreno(){
   if (!S.cargado.plan && !S.sinDb) return `<div class="empty">Cargando tu rutina…</div>`;
   if (S.entEd) return vEntEd();
-  const plan = S.plan || [];
   const hoy = hoyISO();
-  const fechaSel = S.ed ? S.ed.fecha : hoy;
+  const fechaSel = S.ed ? S.ed.fecha : (S.fechaSel || hoy);
+  const plan = planDe(fechaSel);
   const ents = (S.entrenos||[]).slice().sort((a,b) => a.nombre.localeCompare(b.nombre, "es"));
   const opciones = `<optgroup label="Tu rutina">${ordenPlan(plan).map(s => `<option value="${s.n}" ${S.ed && S.ed.n===s.n?"selected":""}>${esc(s.dia)} ${esc((s.turno||"").toLowerCase())} — ${esc(s.nombre)}</option>`).join("")}</optgroup>`
     + (ents.length ? `<optgroup label="Mis entrenamientos">${ents.map(s => `<option value="${s.n}" ${S.ed && S.ed.n===s.n?"selected":""}>${esc(s.nombre)}</option>`).join("")}</optgroup>` : "");
@@ -1091,7 +1122,7 @@ function vEntreno(){
           <button class="chk" data-act="check" data-e="${ei}" data-s="${si}" aria-label="${nom} hecha" aria-pressed="${!!s.ok}">✓</button>
         </div>`; }).join("");
       html += `<section class="card ex">
-        <div class="ex-h">${lib ? `<button class="ej-mini" data-act="verEj" data-n="${esc(e.nombre)}" aria-label="Cómo se hace ${esc(e.nombre)}">${animEj(lib) || fotoEj(lib)}</button>` : ""}<div class="grow"><h3>${esc(e.nombre)}</h3><div class="ex-meta">${esc([objetivoTxt(e, f), e.descanso && e.descanso !== "—" ? "descanso " + e.descanso : ""].filter(Boolean).join(" · "))}</div>${pe.agarre ? `<div class="agarre small"><b>✋ Agarre:</b> ${esc(pe.agarre)}</div>` : ""}${pe.nota ? `<div class="muted small" style="margin-top:2px">${esc(pe.nota)}</div>` : ""}
+        <div class="ex-h">${lib ? `<button class="ej-mini" data-act="verEj" data-n="${esc(e.nombre)}" aria-label="Cómo se hace ${esc(e.nombre)}">${animEj(lib) || fotoEj(lib)}</button>` : ""}<div class="grow"><h3>${esc(e.nombre)}</h3><div class="ex-meta">${esc([objetivoTxt(e, f), e.descanso && e.descanso !== "—" ? "descanso " + e.descanso : ""].filter(Boolean).join(" · "))}</div>${pe.agarre ? `<div class="agarre small"><b>✋ Agarre:</b> ${esc(pe.agarre)}</div>` : pe.tecnica ? `<div class="agarre small"><b>✋ Agarre y técnica:</b> ${esc(pe.tecnica)}</div>` : ""}${pe.nota ? `<div class="muted small" style="margin-top:2px">${esc(pe.nota)}</div>` : ""}
             <button class="lnk-btn" data-act="exCambiar" data-e="${ei}">⇄ Cambiar ejercicio</button></div>
           <button class="iconbtn" data-act="exQuitar" data-e="${ei}" aria-label="Quitar ${esc(e.nombre)} de esta sesión">✕</button></div>
         ${objetivoHTML(e, og)}
@@ -1431,7 +1462,7 @@ function vProgreso(){
 
 function marcasHTML(){
   const vistos = new Set(), filas = [];
-  ordenPlan(S.plan||[]).forEach(ses => (ses.ejercicios||[]).forEach(e => {
+  ordenPlan(todasRutinas()).forEach(ses => (ses.ejercicios||[]).forEach(e => {
     if (e.modo !== "marca" || vistos.has(e.nombre)) return; vistos.add(e.nombre);
     const L = S.sesiones.filter(s => (s.ejercicios||[]).some(x => x.nombre === e.nombre && x.series && x.series[0] && x.series[0].reps != null));
     const val = s => s.ejercicios.find(x => x.nombre === e.nombre).series[0].reps;
@@ -1446,14 +1477,14 @@ function marcasHTML(){
 /* ---------- vista: AJUSTES ---------- */
 function nombresEjercicios(){
   const set = new Set();
-  (S.plan||[]).forEach(s => (s.ejercicios||[]).forEach(e => set.add(e.nombre)));
+  todasRutinas().forEach(s => (s.ejercicios||[]).forEach(e => set.add(e.nombre)));
   (S.rutEd||[]).forEach(s => (s.ejercicios||[]).forEach(e => e.nombre && set.add(e.nombre)));
   S.sesiones.forEach(s => (s.ejercicios||[]).forEach(e => set.add(e.nombre)));
   todosEj().forEach(e => set.add(e.n));
   return [...set].sort((a,b) => a.localeCompare(b,"es"));
 }
 function modoDe(nombre){
-  for (const s of (S.plan||[])) { const e = (s.ejercicios||[]).find(x => x.nombre === nombre); if (e) return e.modo || "kg"; }
+  for (const s of todasRutinas()) { const e = (s.ejercicios||[]).find(x => x.nombre === nombre); if (e) return e.modo || "kg"; }
   for (const s of S.sesiones) { const e = (s.ejercicios||[]).find(x => x.nombre === nombre); if (e && e.modo) return e.modo; }
   const lib = bibEj(nombre); if (lib && lib.m) return lib.m;
   return "kg";
@@ -2145,9 +2176,9 @@ function payloadSesion(s, vaciar){
   let ejercicios = (s.ejercicios || []).map(e => {
     const L = e.series || [], ap = L.find(x => x.ap);
     const series = fz.v2 ? efec(L).map(sx) : fz.hi && (ap || ((e.modo === "kg" || e.modo === "corporal") && !clasicoEj(e))) ? [ap ? sx(ap) : {kg:null, reps:null}].concat(efec(L).map(sx)) : L.map(sx);
-    return {nombre:(planEj(e.nombre, s.n) || {}).hoja || e.nombre, series, rir:e.rir ?? null, notas:e.notas || ""};
+    return {nombre:(planEj(e.nombre, s.n, s.fecha) || {}).hoja || e.nombre, series, rir:e.rir ?? null, notas:e.notas || ""};
   });
-  if (vaciar){ const pl = (S.plan||[]).find(p => p.n === s.n); ejercicios = ((pl && pl.ejercicios) || s.ejercicios || []).filter(e => tocaSemana(e, s.fecha)).map(e => ({nombre:e.hoja || e.nombre, series:[], rir:null, notas:""})); }
+  if (vaciar){ const pl = planDe(s.fecha).find(p => p.n === s.n); ejercicios = ((pl && pl.ejercicios) || s.ejercicios || []).filter(e => tocaSemana(e, s.fecha)).map(e => ({nombre:e.hoja || e.nombre, series:[], rir:null, notas:""})); }
   return {semana:fz.semana, n:s.n, nombre:s.nombre, fecha:s.fecha, ejercicios};
 }
 function payloadMedidas(semana){
@@ -2207,14 +2238,19 @@ function payloadMetodo(){
     const ini = addDias(obj().inicio, (n - 1) * 7), fin = fase(addDias(ini, 6)); if (!fin || !fin.hi || !fin.v2) continue;
     const objetivos = {}, cuatro = [];
     let todasV2 = true;
-    (S.plan || []).forEach(ses => {
+    const plSem = planDe(addDias(ini, 6)), vistos = {};
+    plSem.forEach(ses => (ses.ejercicios || []).forEach(e => { const k = e.hoja || e.nombre; vistos[k] = (vistos[k] || 0) + 1; }));
+    plSem.forEach(ses => {
       const k = DIAS_SEM.indexOf(ses.dia), fz = fase(addDias(ini, k < 0 ? 0 : k));
       if (!fz || !fz.hi) return;
       if (!fz.v2) todasV2 = false;
-      (ses.ejercicios || []).forEach(e => {
+      (ses.ejercicios || []).forEach(e0 => {
+        // El ejercicio de la rutina manda: no se busca por nombre en otras rutinas
+        const e = Object.assign({clasico:false, fallo:"fallo", aprox:0}, e0);
         if (!esHI(e, fz)) return;
         const nom = e.hoja || e.nombre;
-        if (fz.v2){ objetivos[nom] = objetivoTxt(e, fz, true); cuatro.push(nom); return; }
+        // Un ejercicio que sale en dos sesiones con objetivos distintos se deja como está en la hoja
+        if (fz.v2){ if (vistos[nom] === 1) objetivos[nom] = objetivoTxt(e, fz, true); if (!cuatro.includes(nom)) cuatro.push(nom); return; }
         if (!fin.v2){
           const r = rangoReps(e.objetivo), rango = r ? (r.hi !== r.lo ? `${r.lo}-${r.hi}` : `${r.lo}`) : "";
           const suf = fz.hiFase === "descarga" ? " (3-4 de margen)" : fz.hiFase === "adapt" ? " (a 1 del fallo)" : " al fallo";
@@ -2291,9 +2327,18 @@ function hojaHTML(){
 }
 
 /* ---------- rutina editable ---------- */
+function rutinaSiguienteHTML(){
+  const d = S.planDoc || {}, hoy = hoyISO();
+  if (!d.desde || hoy >= d.desde) return "";
+  return `<section class="card sec"><span class="eyebrow">Rutina nueva desde el ${esc(ddmm(d.desde))}</span>
+    <span class="muted small">A partir de ese lunes la app usa esta rutina sola (semanas 9-12 de tu hoja). Si abres una sesión de esa semana, ya te sale la nueva.</span>
+    ${ordenPlan(d.sesiones||[]).map(s => `<details><summary>${esc(s.dia)} ${esc((s.turno||"").toLowerCase())} — ${esc(s.nombre)}</summary>
+      <div class="tbl-w" style="margin-top:8px"><table><tbody>${(s.ejercicios||[]).map(e => `<tr><td>${esc(e.nombre)}</td><td>${esc(objetivoTxt(e, fase(addDias(d.desde, 7)), true))}</td><td class="muted">${esc(e.descanso)}</td></tr>`).join("")}</tbody></table></div></details>`).join("<hr>")}
+  </section>`;
+}
 function vRutina(){
   if (!S.rutEd){
-    return `<section class="card sec">
+    return rutinaSiguienteHTML() + `<section class="card sec">
       <div class="sec-h"><span class="eyebrow">Tu rutina</span><button class="btn sm pri" data-act="rutEditar">Editar rutina</button></div>
       ${ordenPlan(S.plan||[]).map(s => `<details><summary>${esc(s.dia)} ${esc((s.turno||"").toLowerCase())} — ${esc(s.nombre)}</summary>
         <div class="tbl-w" style="margin-top:8px"><table><tbody>${(s.ejercicios||[]).map(e => `<tr><td>${esc(e.nombre)}</td><td>${esc(objetivoTxt(e, fase(hoyISO()), true))}</td><td class="muted">${esc(e.descanso)}</td></tr>`).join("") || `<tr><td class="muted">Sin ejercicios</td></tr>`}</tbody></table></div></details>`).join("<hr>") || `<div class="empty">No hay rutina. Pulsa «Editar rutina» para crearla.</div>`}
@@ -2324,7 +2369,8 @@ function vRutina(){
           <label class="lb">Efectivas<select class="tx" id="re-f-${si}-${ei}" data-r="fallo" data-si="${si}" data-ei="${ei}">${opts({fallo:"Al fallo", a1:"A 1 rep del fallo"}, e.fallo === "a1" ? "a1" : "fallo")}</select></label>
         </div>` : ""}
         ${e.modo === "kg" || e.modo === "corporal" || !e.modo ? `<label class="row small" style="gap:8px"><input type="checkbox" id="re-c-${si}-${ei}" data-r="clasico" data-si="${si}" data-ei="${ei}" ${e.clasico ? "checked" : ""}> Series normales (sin aproximación ni fallo)</label>` : ""}
-        ${e.modo === "kg" || e.modo === "corporal" || !e.modo ? `<label class="lb">Agarre<input class="tx" id="re-g-${si}-${ei}" data-r="agarre" data-si="${si}" data-ei="${ei}" value="${esc(e.agarre||"")}" placeholder="Ej.: prono, algo más ancho que los hombros"></label>` : ""}
+        ${(e.modo === "kg" || e.modo === "corporal" || !e.modo) && e.agarre !== undefined ? `<label class="lb">Agarre<input class="tx" id="re-g-${si}-${ei}" data-r="agarre" data-si="${si}" data-ei="${ei}" value="${esc(e.agarre||"")}" placeholder="Ej.: prono, algo más ancho que los hombros"></label>` : ""}
+        ${(e.modo === "kg" || e.modo === "corporal" || !e.modo) && e.agarre === undefined ? `<label class="lb">Agarre y técnica<input class="tx" id="re-t-${si}-${ei}" data-r="tecnica" data-si="${si}" data-ei="${ei}" value="${esc(e.tecnica||"")}" placeholder="Opcional"></label>` : ""}
         <label class="lb">Nota (cómo se hace)<input class="tx" id="re-x-${si}-${ei}" data-r="nota" data-si="${si}" data-ei="${ei}" value="${esc(e.nota||"")}" placeholder="Opcional"></label>
       </div>`).join("");
     const arm = S.borrarArm === "ses"+si;
@@ -2363,13 +2409,14 @@ async function guardarRutina(){
       if (e.fallo === "a1") o.fallo = "a1";
       if ((e.nota||"").trim()) o.nota = e.nota.trim();
       if (e.agarre !== undefined) o.agarre = String(e.agarre).trim();
-      if (e.tecnica) o.tecnica = e.tecnica;
+      if ((e.tecnica||"").trim()) o.tecnica = String(e.tecnica).trim();
+      if (e.antes) o.antes = e.antes;
       if (e.hoja && e.nombre.trim() === e.nombreOrig) o.hoja = e.hoja;
       return o;
     })
   }));
-  S.plan = L; S.rutEd = null; S.borrarArm = null; render();
-  await escribir("plan/rutina", {sesiones:L});
+  ponerRutinaHoy(L); S.rutEd = null; S.borrarArm = null; render();
+  await guardarPlanDoc();
   toast("Rutina guardada");
 }
 async function guardarCfg(){
@@ -2665,8 +2712,8 @@ function fichaHTML(nombre){
     ${(e.p||[]).length ? `<section class="card sec"><span class="eyebrow">Músculos</span>
       <div class="ficha-mus">${mapaEjercicio(e)}<div class="small"><div><span class="dot" style="background:var(--neon)"></span> <b>Principal:</b> ${esc((e.p||[]).map(nombreMus).join(", "))}</div>
       ${(e.s||[]).length ? `<div><span class="dot" style="background:rgba(57,255,20,.4)"></span> <b>Secundario:</b> ${esc(e.s.map(nombreMus).join(", "))}</div>` : ""}</div></div></section>` : ""}
-    ${(() => { const pe = planEj(nombre) || (S.plan||[]).reduce((a, p) => a || (p.ejercicios||[]).find(x => x.agarre && bibEj(x.nombre) === e), null);
-      return pe && (pe.agarre || pe.tecnica) ? `<section class="card sec"><span class="eyebrow">En tu plan</span>${pe.agarre ? `<div class="small"><b>✋ Agarre:</b> ${esc(pe.agarre)}</div>` : ""}${pe.tecnica ? `<div class="small"><b>Técnica:</b> ${esc(pe.tecnica)}</div>` : ""}</section>` : ""; })()}
+    ${(() => { const pe = planEj(nombre) || todasRutinas().reduce((a, p) => a || (p.ejercicios||[]).find(x => (x.agarre || x.tecnica) && bibEj(x.nombre) === e), null);
+      return pe && (pe.agarre || pe.tecnica) ? `<section class="card sec"><span class="eyebrow">En tu plan</span>${pe.agarre ? `<div class="small"><b>✋ Agarre:</b> ${esc(pe.agarre)}</div>` : ""}${pe.tecnica ? `<div class="small"><b>${pe.agarre ? "Técnica" : "Agarre y técnica"}:</b> ${esc(pe.tecnica)}</div>` : ""}</section>` : ""; })()}
     ${fam && fam.pasos ? `<section class="card sec"><span class="eyebrow">Cómo se hace</span><ol class="pasos">${fam.pasos.map(p => `<li>${esc(p)}</li>`).join("")}</ol></section>` : ""}
     <section class="card sec"><span class="eyebrow">Tu historial</span>
       ${veces ? `<div class="stats"><div class="stat"><span class="muted small">Sesiones</span><b>${veces}</b></div>
@@ -2873,9 +2920,10 @@ function incremento(nombre, W, modo){
 // Última sesión anterior con ese ejercicio; las de semanas de descarga no sirven de referencia si hay otra.
 function referencia(nombre, fecha){
   let reserva = null;
+  const nombres = [nombre].concat((planEj(nombre) || {}).antes || []);
   for (const s of S.sesiones){
     if (s.fecha >= fecha) continue;
-    const e = (s.ejercicios||[]).find(x => x.nombre === nombre);
+    const e = (s.ejercicios||[]).find(x => nombres.includes(x.nombre));
     if (!e) continue;
     const series = efec(e.series).filter(x => x.reps != null || x.kg != null);
     if (!series.length) continue;
@@ -2994,6 +3042,7 @@ function objetivoHTML(e, o){
   const aviso = o.ai && e.modo !== "cardio" && e.modo !== "tiempo"
     ? `<div class="muted small">${nAp ? `<b>A</b> = ${nAp > 1 ? "aproximaciones" : "aproximación"}: ${nAp > 1 ? "subiendo de peso, " : ""}ligera${nAp > 1 ? "s" : ""} y sin cansarte${v2 ? " (no se apuntan en la hoja)" : ""}. ` : ""}${o.aiFase === "descarga" ? `Esta semana nada al fallo: que te sobren 3-4 reps${v2 ? " en cada serie" : ""}.` : reintro ? "Semana de reintroducción: deja 1-2 reps en todas las series. Nada al fallo." : !v2 && o.aiFase === "adapt" ? "Las efectivas, a 1 rep del fallo: aprende a reconocerlo." : v2 && barra ? "Todas las efectivas a 1 rep del fallo: para cuando solo te quede una con buena técnica. Este no se lleva al fallo." : v2 ? `${o.nEf > 1 ? "Las primeras efectivas, dejando 0-1 reps. La última (en rojo), " : "La efectiva, "}<b>al fallo</b>: hasta que no salga otra rep con buena técnica.` : barra ? "Básico con barra: para 1 rep antes de que se rompa la técnica (o usa los seguros)." : "Las efectivas, hasta el fallo: hasta que no salga otra rep con buena técnica."}${v2 ? " El número pequeño de cada serie son las reps que te deben sobrar." : ""}</div>` : "";
   if (o.tipo === "primera" && !o.ai && (e.modo === "tiempo" || e.modo === "corporal")) return `<div class="hint"><b>Primera vez.</b> Haz ${o.lo ? `${o.lo}${o.hi && o.hi !== o.lo ? "-" + o.hi : ""} ${u}` : "lo que marque el plan"} en cada serie con buena técnica. A partir de la próxima, FIT-ALL te dirá qué toca.</div>`;
+  if (o.tipo === "primera" && o.ai && e.modo === "corporal") return `<div class="hint"><b>Primera vez.</b> Haz ${o.lo ? `${o.lo}${o.hi && o.hi !== o.lo ? "-" + o.hi : ""} reps` : "las reps del plan"} en cada serie ${reintro ? "dejando 1-2 en reserva" : o.aiFase === "descarga" ? "con 3-4 de margen" : "como marca cada serie"}. A partir de la próxima, FIT-ALL te dirá qué toca.</div>${aviso}`;
   if (o.tipo === "primera") return `<div class="hint"><b>Primera vez.</b> ${o.ai ? `${nAp > 1 ? `Haz ${nAp} aproximaciones subiendo de peso` : nAp ? "Haz una serie ligera de aproximación" : "Calienta con poco peso"} y después busca un peso con el que llegues ${reintro ? "a 1-2 reps del fallo" : o.aiFase === "descarga" ? "con 3-4 reps de margen" : barra ? "a 1 rep del fallo" : "al fallo"}` : `Elige un peso con el que te queden ${esc(fase(S.ed.fecha)?.rir || "2 reps de margen")}`}${o.lo ? ` haciendo ${o.lo}${o.hi && o.hi !== o.lo ? "-" + o.hi : ""} ${u}` : ""}. A partir de la próxima, FIT-ALL te dirá qué peso poner.</div>${aviso}`;
   if (o.tipo === "cardio") return `<div class="hint"><b>Hoy toca:</b> ${esc(e.objetivo || repsTxt)}</div>${ult}`;
   const n = efs.length;
@@ -3029,7 +3078,7 @@ function gastoDia(f){
   let entreno = 0;
   S.sesiones.filter(s => s.fecha === f).forEach(s => (s.ejercicios||[]).forEach(e => {
     if (e.modo === "cardio") entreno += (e.series||[]).reduce((a, x) => a + (x.reps || 0), 0) * 7;
-    else if (e.modo === "marca"){ const pe = planEj(e.nombre, s.n) || {}, v = ((e.series||[])[0] || {}).reps || 0; entreno += (pe.unidad === "min" ? v : (num(pe.min) || 0)) * (num(pe.kcalMin) || 7); }
+    else if (e.modo === "marca"){ const pe = planEj(e.nombre, s.n, s.fecha) || {}, v = ((e.series||[])[0] || {}).reps || 0; entreno += (pe.unidad === "min" ? v : (num(pe.min) || 0)) * (num(pe.kcalMin) || 7); }
     else entreno += efec(e.series).length * 8 + ((e.series||[]).length - efec(e.series).length) * 4;
   }));
   entreno = Math.round(entreno);
@@ -3287,6 +3336,7 @@ view.addEventListener("change", e => {
   if (t.id === "ed-n" || t.id === "ed-fecha"){
     const n = $("#ed-n").value, f = $("#ed-fecha").value || hoyISO();
     if (n) abrirSesion(f, n);
+    else if (t.id === "ed-fecha"){ S.fechaSel = f; render(); }
   }
   if (t.dataset.in === "progEj"){ S.progEj = t.value; render(); }
   if (t.dataset.in === "rir" && S.ed){ S.ed.ejercicios[+t.dataset.e].rir = t.value; guardarBorrador(); }
