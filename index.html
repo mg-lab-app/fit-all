@@ -153,6 +153,18 @@ label.lb > input,label.lb > select{color:var(--fg);font-weight:400;font-size:16p
 .li button.lnk{background:none;border:0;padding:0;text-align:left;display:flex;flex-direction:column;flex:1;min-width:0}
 .iconbtn{background:none;border:0;color:var(--muted);padding:6px 8px;border-radius:6px;font-size:18px;line-height:1}
 .meal-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding-top:4px}
+.pd-meal{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-top:1px solid var(--line)}
+.pd-meal:first-of-type{border-top:0;padding-top:4px}
+.pd-opts{display:flex;flex-direction:column;gap:6px}
+.pd-opt{display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;width:100%;border:1px solid var(--line);background:var(--surface);color:inherit;border-radius:var(--r-sm,8px);padding:9px 12px;font:inherit}
+.pd-opt b{display:block;font-size:15px}
+.pd-opt .muted{font-size:13px}
+.pd-opt .pd-k{flex:none;font-size:13px;font-weight:600;color:var(--muted);text-align:right}
+.pd-opt[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.pd-opt[aria-pressed="true"] .pd-k{color:var(--accent)}
+.pd-hecho{font-size:14px}
+.pd-form{display:flex;gap:8px;align-items:flex-end}
+.pd-form textarea{flex:1;min-height:44px}
 
 .tbl-w{overflow-x:auto}
 table{border-collapse:collapse;width:100%;font-size:14px}
@@ -1218,6 +1230,55 @@ function pintarTimer(){
 setInterval(() => { if (S.timer) pintarTimer(); }, 500);
 
 /* ---------- vista: DIETA ---------- */
+// Plan del día: opciones para las comidas que prepara él; las demás se escriben a mano.
+const PLAN_COMIDAS = {
+  "Desayuno": [
+    {n:"Tostadas con huevo", d:"2 tostadas de pan integral con tomate y un chorrito de aceite + 2 huevos + 1 loncha de pavo", kcal:380, p:25, c:36, g:15},
+    {n:"Avena con proteína", d:"40 g de avena + 200 ml de leche semidesnatada + 1 cacito de proteína + 1 fruta (ideal en días de pierna)", kcal:410, p:38, c:50, g:7},
+    {n:"Bocadillo de atún", d:"80 g de pan integral + 1 lata de atún al natural + tomate", kcal:300, p:25, c:40, g:4}
+  ],
+  "Media mañana": [
+    {n:"Batido de proteína y plátano", d:"1 cacito de proteína con agua + 1 plátano", kcal:240, p:25, c:30, g:2},
+    {n:"Yogur proteico con fruta", d:"Yogur proteico o skyr + 1 fruta + 20 g de avena", kcal:250, p:22, c:35, g:3},
+    {n:"Tortitas de arroz con pavo", d:"2 tortitas de arroz + 80 g de pavo o jamón cocido + 1 fruta", kcal:230, p:20, c:33, g:2}
+  ],
+  "Merienda": [
+    {n:"Bocadillo pequeño", d:"60-80 g de pan integral con pavo, jamón cocido, atún o tranchetes + 1 fruta", kcal:300, p:22, c:45, g:4},
+    {n:"Skyr con plátano y cacahuete", d:"Skyr o yogur proteico + 1 plátano + 10 g de crema de cacahuete", kcal:280, p:22, c:35, g:6},
+    {n:"Huevos cocidos", d:"2 huevos cocidos + 1 rebanada de pan + 1 fruta (añade un batido otra comida para llegar a la proteína)", kcal:290, p:16, c:32, g:11}
+  ]
+};
+const planOpciones = c => (obj().planComidas && obj().planComidas[c]) || PLAN_COMIDAS[c] || null;
+function planDiaHTML(f){
+  const items = (S.diario[f] && S.diario[f].items) || [];
+  const filas = comidas().map(c => {
+    const its = items.filter(i => i.comida === c);
+    const k = its.reduce((a,i) => a + (i.kcal||0), 0);
+    const opts = planOpciones(c);
+    const cab = `<div class="meal-h"><h3>${esc(c)}</h3><span class="muted small">${its.length ? fmt(k) + " kcal" : "pendiente"}</span></div>`;
+    if (opts){
+      const elegida = its.find(i => i.plan);
+      return `<div class="pd-meal">${cab}<div class="pd-opts">${opts.map((o, n) => {
+        const on = !!(elegida && elegida.plan === c + "|" + n);
+        return `<button type="button" class="pd-opt" data-act="planComida" data-comida="${esc(c)}" data-n="${n}" aria-pressed="${on}">
+          <span><b>${on ? "✓ " : ""}${esc(o.n)}</b><span class="muted">${esc(o.d)}</span></span>
+          <span class="pd-k">${fmt(o.kcal)} kcal<br>P ${fmt(o.p)} g</span></button>`;
+      }).join("")}</div></div>`;
+    }
+    const hecho = its.length ? `<div class="pd-hecho">${its.map(i => esc(i.nombre)).join(" · ")}</div>` : "";
+    return `<div class="pd-meal">${cab}${hecho}
+      <form class="pd-form" data-form="addItem">
+        <input type="hidden" name="comida" value="${esc(c)}">
+        <textarea class="tx" name="nombre" rows="1" aria-label="Qué has comido en ${esc(c)}" placeholder="${its.length ? "Añadir algo más…" : "Ej.: plato de lentejas, un trozo de pan y una naranja"}"></textarea>
+        <button class="btn pri sm" type="submit">Apuntar</button>
+      </form></div>`;
+  }).join("");
+  return `<section class="card sec">
+    <span class="eyebrow">Comidas del día</span>
+    <span class="muted small">Elige una opción en las comidas que preparas tú y escribe lo que hayas comido en las de casa. Para cambiar cantidades, toca el alimento en la lista de abajo.</span>
+    ${filas}
+  </section>`;
+}
 function comidaPorHora(){
   const L = comidas();
   const h = new Date().getHours() + new Date().getMinutes()/60;
@@ -1275,6 +1336,7 @@ function vDieta(){
       <button class="btn sm" data-act="diaNext" aria-label="Día siguiente" ${f>=hoyISO()?"disabled":""}>›</button>
     </div>
     <section class="card sec">${macrosHTML(t, o)}</section>
+    ${planDiaHTML(f)}
     ${aguaHTML(f)}
     ${pasosHTML(f)}
     <section class="card sec">
@@ -3408,6 +3470,18 @@ view.addEventListener("click", async e => {
   }
   else if (a === "diaPrev"){ S.dietaFecha = addDias(S.dietaFecha,-1); render(); }
   else if (a === "diaNext"){ if (S.dietaFecha < hoyISO()) { S.dietaFecha = addDias(S.dietaFecha,1); render(); } }
+  else if (a === "planComida"){
+    const f = S.dietaFecha, c = b.dataset.comida, n = +b.dataset.n;
+    const o = (planOpciones(c) || [])[n]; if (!o) return;
+    const d = Object.assign({fecha:f, items:[]}, S.diario[f] || {});
+    const tag = c + "|" + n;
+    const yaEstaba = (d.items||[]).some(i => i.plan === tag);
+    d.items = (d.items||[]).filter(i => !(i.comida === c && i.plan));
+    if (!yaEstaba) d.items = d.items.concat([{id:nuevoId(), comida:c, plan:tag, nombre:o.n, cantTxt:o.d, kcal:o.kcal, p:o.p, c:o.c, g:o.g}]);
+    S.ultComida = c;
+    await guardarDia(f, d);
+    toast(yaEstaba ? `${c}: opción quitada` : `${c}: ${o.n} (${fmt(o.kcal)} kcal)`);
+  }
   else if (a === "delItem"){
     const f = S.dietaFecha; const d = Object.assign({}, S.diario[f]);
     d.items = (d.items||[]).filter(i => i.id !== b.dataset.id); guardarDia(f, d);
