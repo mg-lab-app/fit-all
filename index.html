@@ -357,6 +357,42 @@ hr{border-top-color:rgba(255,255,255,.07)}
 .ses.hecha .ses-ic{border-color:rgba(57,217,106,.6);box-shadow:0 0 0 2px rgba(57,217,106,.18)}
 .ses.hecha .ses-ic::after{content:"✓";position:absolute;bottom:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--green);color:#000;font-size:12px;font-weight:900;display:grid;place-items:center}
 .set.ap .si{color:var(--yellow);font-weight:900}
+/* calendario */
+.racha{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:2px 0 10px}
+.racha>div{background:var(--surface-2);border-radius:14px;padding:9px 4px;text-align:center;display:flex;flex-direction:column;gap:2px}
+.racha b{font-size:18px;font-weight:800;color:var(--fg)}
+.racha>div:first-child b{color:var(--neon)}
+.racha span{font-size:10.5px;color:var(--muted);line-height:1.15}
+.cal-m{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.cal-m b{font-size:16px}
+.cal-g{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}
+.cal-s span{font-size:11px;color:var(--muted);font-weight:700;padding:2px 0}
+.cd{position:relative;aspect-ratio:1;border:0;border-radius:50%;background:none;color:var(--fg);font:inherit;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.cd.plan{box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.18);color:var(--muted)}
+.cd.desc:not(.si){color:#7fb7ff}
+.cd.si{background:var(--neon);color:#000;font-weight:800;box-shadow:0 0 12px var(--neon-glow)}
+.cd.hoy:not(.si){box-shadow:inset 0 0 0 2px var(--neon);color:var(--neon);font-weight:800}
+.cd.sel{outline:2px solid #fff;outline-offset:2px}
+.cd i{position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;border-radius:8px;background:#fff;color:#000;font-size:10px;font-style:normal;font-weight:900;line-height:16px;padding:0 3px}
+.cal-ley{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px}
+.cal-ley span{display:flex;align-items:center;gap:5px}
+.lg{width:10px;height:10px;border-radius:50%;display:inline-block}
+.lg.si{background:var(--neon)}
+.lg.plan{box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.35)}
+.lg.desc{background:#7fb7ff}
+.wk{display:flex;flex-direction:column;gap:10px;width:100%;text-align:left;color:var(--fg);font:inherit;cursor:pointer}
+.wk-h{display:flex;gap:10px;align-items:center}
+.wk-h b{display:block;font-size:16px}
+.wk-st{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.wk-st div{display:flex;flex-direction:column}
+.wk-st span{font-size:11px;color:var(--muted)}
+.wk-st b{font-size:15px}
+.wk-ej{display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(255,255,255,.07);padding-top:9px}
+.wk-e{display:flex;align-items:center;gap:9px;font-size:13.5px}
+.wk-im,.wk-ph{width:34px;height:34px;border-radius:9px;flex:none;background:#fff;position:relative;overflow:hidden}
+.wk-im img{position:absolute;top:0;left:0;width:200%;height:100%;max-width:none;object-fit:cover}
+.wk-ph{display:flex;align-items:center;justify-content:center;background:var(--surface-2);color:var(--muted)}
+.wk-ph svg{width:18px;height:18px}
 .agarre{margin-top:4px;padding:6px 9px;border-radius:10px;background:var(--surface-2);color:var(--fg);line-height:1.35}
 .agarre b{color:var(--neon)}
 .set.tg{grid-template-columns:38px 1fr 14px 1fr 44px}
@@ -1166,8 +1202,82 @@ function vEntreno(){
         ${ed.origen && S.sesiones.some(s => s.id===ed.origen) ? `<button class="btn danger sm" data-act="borrarSesion">${S.borrarArm===ed.origen?"Toca otra vez para borrar":"Borrar sesión"}</button>` : ""}
       </div>`;
   }
-  html += `<section class="card sec"><span class="eyebrow">Historial</span>${historialHTML()}</section></div>`;
+  html += calendarioHTML() + `</div>`;
   return html;
+}
+/* ---------- calendario de entrenos (estilo Hevy) ---------- */
+const MESES_L = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+function lunesDe(f){ const d = parseISO(f), w = (d.getDay() + 6) % 7; return addDias(f, -w); }
+// Récords conseguidos en cada sesión (el mejor peso de un ejercicio hasta ese día)
+function recordsPorSesion(){
+  const mejor = {}, out = {};
+  S.sesiones.slice().sort((a, b) => a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : (a.n||0) - (b.n||0)).forEach(s => {
+    let n = 0;
+    (s.ejercicios||[]).forEach(e => {
+      const mx = Math.max(0, ...efec(e.series).filter(x => x.reps).map(x => x.kg || 0));
+      if (!mx) return;
+      if (mejor[e.nombre] != null && mx > mejor[e.nombre]) n++;
+      if (mejor[e.nombre] == null || mx > mejor[e.nombre]) mejor[e.nombre] = mx;
+    });
+    out[s.id] = n;
+  });
+  return out;
+}
+function rachaSemanas(){
+  const sem = new Set(S.sesiones.map(s => lunesDe(s.fecha)));
+  let l = lunesDe(hoyISO()), n = 0;
+  if (!sem.has(l)) l = addDias(l, -7);           // la semana en curso aún puede completarse
+  while (sem.has(l)){ n++; l = addDias(l, -7); }
+  return n;
+}
+function mejorSerie(e){
+  const L = efec(e.series);
+  if (e.modo === "marca" || e.modo === "cardio" || e.modo === "tiempo"){ const x = L[0] || {}; const u = e.modo === "cardio" ? " min" : e.modo === "tiempo" ? " s" : ((planEj(e.nombre) || {}).unidad ? " " + planEj(e.nombre).unidad : ""); return x.reps != null ? `${fmt(x.reps, 2)}${u}` : ""; }
+  let b = null; L.forEach(x => { if (!b || (x.kg || 0) > (b.kg || 0) || ((x.kg || 0) === (b.kg || 0) && (x.reps || 0) > (b.reps || 0))) b = x; });
+  if (!b) return "";
+  return b.kg ? `${fmt(b.kg, 2)} kg × ${b.reps ?? "–"}` : `${b.reps ?? "–"} reps`;
+}
+function tarjetaSesion(s, prs){
+  const vol = volumen(s), ns = nSeries(s), pr = prs[s.id] || 0;
+  const ejs = (s.ejercicios||[]).map(e => { const lib = bibEj(e.nombre), n = efec(e.series).length;
+    return `<div class="wk-e">${lib && imgEj(lib) ? `<span class="wk-im"><img src="${imgEj(lib)}" alt="" loading="lazy" decoding="async"></span>` : `<span class="wk-ph">${ICONO_PESA}</span>`}<span class="grow">${n} × ${esc(e.nombre)}</span><span class="muted">${esc(mejorSerie(e))}</span></div>`; }).join("");
+  return `<button class="wk card" data-act="abrir" data-f="${s.fecha}" data-n="${s.n}">
+    <div class="wk-h">${icoSesion(s)}<div class="grow"><b>${esc(s.nombre)}</b><span class="muted small">${esc(parseISO(s.fecha).toLocaleDateString("es-ES", {weekday:"long", day:"numeric", month:"long"}))}</span></div></div>
+    <div class="wk-st"><div><span>Volumen</span><b>${vol ? mil(Math.round(vol)) + " kg" : "—"}</b></div><div><span>Series</span><b>${ns}</b></div><div><span>Récords</span><b>${pr ? "🏆 " + pr : "—"}</b></div></div>
+    <div class="wk-ej">${ejs}</div>
+  </button>`;
+}
+function calendarioHTML(){
+  const hoy = hoyISO(), mes = S.calMes || hoy.slice(0, 7);
+  const [Y, M] = mes.split("-").map(Number), ini = `${mes}-01`, dias = new Date(Y, M, 0).getDate();
+  const porDia = {};
+  S.sesiones.forEach(x => { (porDia[x.fecha] = porDia[x.fecha] || []).push(x); });
+  const delMes = S.sesiones.filter(x => x.fecha.slice(0, 7) === mes);
+  const huecos = (parseISO(ini).getDay() + 6) % 7;
+  const fz = d => fase(d);
+  let celdas = "";
+  for (let i = 0; i < huecos; i++) celdas += `<span></span>`;
+  for (let d = 1; d <= dias; d++){
+    const f = `${mes}-${String(d).padStart(2, "0")}`, L = porDia[f] || [], z = fz(f);
+    const plan = !L.length && f > hoy && planDe(f).some(p => p.dia === DIAS_SEM[(parseISO(f).getDay() + 6) % 7]);
+    celdas += `<button class="cd ${L.length ? "si" : ""} ${f === hoy ? "hoy" : ""} ${S.calDia === f ? "sel" : ""} ${plan ? "plan" : ""} ${z && !z.fuera && z.ajuste === "descarga" ? "desc" : ""}" data-act="calDia" data-f="${f}" aria-label="${d} de ${MESES_L[M-1]}${L.length ? ": " + L.length + " sesión" + (L.length > 1 ? "es" : "") : ""}">
+      <span>${d}</span>${L.length > 1 ? `<i>${L.length}</i>` : ""}</button>`;
+  }
+  const prs = recordsPorSesion();
+  const lista = S.calDia ? (porDia[S.calDia] || []) : delMes;
+  const volMes = delMes.reduce((a, x) => a + volumen(x), 0), serMes = delMes.reduce((a, x) => a + nSeries(x), 0);
+  const diasMes = new Set(delMes.map(x => x.fecha)).size, racha = rachaSemanas();
+  const titulo = S.calDia ? parseISO(S.calDia).toLocaleDateString("es-ES", {weekday:"long", day:"numeric", month:"long"}).replace(/^./, c => c.toUpperCase()) : `Entrenos de ${MESES_L[M-1]}`;
+  return `<section class="card sec cal">
+    <div class="sec-h"><span class="eyebrow">Calendario</span>${mes !== hoy.slice(0, 7) || S.calDia ? `<button class="btn sm ghost" data-act="calHoy">Hoy</button>` : ""}</div>
+    <div class="racha"><div><b>${racha}</b><span>${racha === 1 ? "semana" : "semanas"} seguidas</span></div><div><b>${diasMes}</b><span>días este mes</span></div><div><b>${delMes.length}</b><span>sesiones</span></div><div><b>${volMes ? fmt(volMes / 1000, 1) + " t" : "—"}</b><span>movidas</span></div></div>
+    <div class="cal-m"><button class="btn sm ghost" data-act="calMes" data-d="-1" aria-label="Mes anterior">‹</button><b>${MESES_L[M-1].replace(/^./, c => c.toUpperCase())} ${Y}</b><button class="btn sm ghost" data-act="calMes" data-d="1" aria-label="Mes siguiente">›</button></div>
+    <div class="cal-g cal-s">${["L","M","X","J","V","S","D"].map(x => `<span>${x}</span>`).join("")}</div>
+    <div class="cal-g">${celdas}</div>
+    <div class="cal-ley muted small"><span><i class="lg si"></i>Entrenado</span><span><i class="lg plan"></i>Toca según tu rutina</span><span><i class="lg desc"></i>Descarga</span></div>
+  </section>
+  <div class="sec-h" style="padding:0 4px"><span class="eyebrow">${esc(titulo)}</span>${S.calDia ? `<button class="btn sm ghost" data-act="calDia" data-f="">Ver todo el mes</button>` : `<span class="muted small">${serMes} series</span>`}</div>
+  ${lista.length ? lista.map(x => tarjetaSesion(x, prs)).join("") : `<div class="empty">${S.calDia ? (S.calDia > hoy ? "Este día aún no ha llegado." : "Este día no entrenaste.") : "Este mes aún no hay sesiones guardadas."}</div>`}`;
 }
 function historialHTML(){
   if (!S.sesiones.length) return `<div class="empty">Aún no hay sesiones guardadas. Cuando guardes la primera, aparecerá aquí.</div>`;
@@ -3410,6 +3520,9 @@ view.addEventListener("click", async e => {
   if (a === "tab"){ S.tab = b.dataset.tab; render(); window.scrollTo(0,0); }
   // biblioteca, mis entrenamientos y mapa
   else if (a === "verEj") abrirBib({modo:"ver", ficha:b.dataset.n});
+  else if (a === "calMes"){ const [y, m] = (S.calMes || hoyISO().slice(0, 7)).split("-").map(Number), d = new Date(y, m - 1 + (+b.dataset.d), 1); S.calMes = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; S.calDia = null; render(); }
+  else if (a === "calDia"){ const f = b.dataset.f || null; S.calDia = f && S.calDia !== f ? f : null; render(); }
+  else if (a === "calHoy"){ S.calMes = null; S.calDia = null; render(); }
   else if (a === "bibVer") abrirBib({modo:"ver", mus:b.dataset.mus || ""});
   else if (a === "exBib" && S.ed) abrirBib({modo:"elegir", multi:true, destino:{tipo:"ed"}});
   else if (a === "rutBib" && S.rutEd) abrirBib({modo:"elegir", multi:true, destino:{tipo:"rut", si:+b.dataset.si}});
