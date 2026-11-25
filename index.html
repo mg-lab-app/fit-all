@@ -357,6 +357,23 @@ hr{border-top-color:rgba(255,255,255,.07)}
 .ses.hecha .ses-ic{border-color:rgba(57,217,106,.6);box-shadow:0 0 0 2px rgba(57,217,106,.18)}
 .ses.hecha .ses-ic::after{content:"✓";position:absolute;bottom:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--green);color:#000;font-size:12px;font-weight:900;display:grid;place-items:center}
 .set.ap .si{color:var(--yellow);font-weight:900}
+/* zonas de cada músculo */
+.zonas-ej{display:flex;gap:10px;align-items:center;margin-top:6px;padding:7px 9px;border-radius:12px;background:rgba(57,255,20,.05);border:1px solid rgba(57,255,20,.12)}
+.zonas-ej .cuerpo.zonas{width:110px;max-width:110px;max-height:130px;flex:none;margin:0}
+.zonas-ej.g .cuerpo.zonas{width:150px;max-width:150px}
+.zonas-ej .small>div{line-height:1.35}
+.cuerpo.zonas .zn{stroke:#0b0b0c;stroke-width:.8}
+.zonas-por{margin-top:4px;color:var(--muted)}
+.zonas-por summary{cursor:pointer;color:var(--fg);font-weight:600}
+.zonas-por>div{margin-top:4px;color:var(--fg)}
+.rep-g{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid rgba(255,255,255,.06)}
+.rep-dib{width:78px;flex:none}
+.rep-dib .cuerpo.zonas{width:78px;max-width:78px;margin:0}
+.rep-z{display:grid;grid-template-columns:1fr 70px 30px;gap:6px;align-items:center;margin-top:5px}
+.rep-z .small{line-height:1.2}
+.rep-z .n{text-align:right;font-weight:700}
+.rep-bar{height:7px;border-radius:4px;background:var(--surface-2);overflow:hidden}
+.rep-bar i{display:block;height:100%;background:var(--neon);border-radius:4px}
 /* calendario */
 .racha{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:2px 0 10px}
 .racha>div{background:var(--surface-2);border-radius:14px;padding:9px 4px;text-align:center;display:flex;flex-direction:column;gap:2px}
@@ -1173,6 +1190,7 @@ function vEntreno(){
         <div class="ex-h">${lib ? `<button class="ej-mini" data-act="verEj" data-n="${esc(e.nombre)}" aria-label="Cómo se hace ${esc(e.nombre)}">${animEj(lib) || fotoEj(lib)}</button>` : ""}<div class="grow"><h3>${esc(e.nombre)}</h3><div class="ex-meta">${esc([objetivoTxt(e, f), e.descanso && e.descanso !== "—" ? "descanso " + e.descanso : ""].filter(Boolean).join(" · "))}</div>${pe.agarre ? `<div class="agarre small"><b>✋ Agarre:</b> ${esc(pe.agarre)}</div>` : pe.tecnica ? `<div class="agarre small"><b>✋ Agarre y técnica:</b> ${esc(pe.tecnica)}</div>` : ""}${pe.nota ? `<div class="muted small" style="margin-top:2px">${esc(pe.nota)}</div>` : ""}
             <button class="lnk-btn" data-act="exCambiar" data-e="${ei}">⇄ Cambiar ejercicio</button></div>
           <button class="iconbtn" data-act="exQuitar" data-e="${ei}" aria-label="Quitar ${esc(e.nombre)} de esta sesión">✕</button></div>
+        ${e.modo !== "marca" && e.modo !== "cardio" ? zonasEjHTML(e.nombre) : ""}
         ${objetivoHTML(e, og)}
         ${sets}
         <div class="row between">
@@ -1597,6 +1615,7 @@ function vProgreso(){
       <span class="muted small">${supTxt ? supTxt + " · " : ""}${diasDieta.length} días con comida apuntada.${ult7d.some(d => d.agua) ? ` Agua: ${fmt(ult7d.reduce((a, d) => a + (d.agua || 0), 0) / 7000, 1)} L al día de media.` : ""}${ult7d.some(d => d.pasos) ? ` Pasos: ${fmt(ult7d.filter(d => d.pasos).reduce((a, d) => a + d.pasos, 0) / ult7d.filter(d => d.pasos).length)} al día de media; ${ult7d.filter(d => d.pasos >= (num(obj().pasos) || 10000)).length} de 7 días con la meta.` : ""}</span>
     </section>
     ${mapaHTML()}
+    ${repartoHTML()}
     <section class="card sec">
       <div class="sec-h"><span class="eyebrow">Peso corporal</span>${estado}</div>
       <div class="stats">
@@ -2710,6 +2729,174 @@ function cuerpoSVG(col, opt = {}){
     ${lado(MUS_F, DET_F, 0, et ? "Delante" : "")}${lado(MUS_B, "", 170, et ? "Detrás" : "")}
   </svg>`;
 }
+/* ---------- zonas de cada músculo: qué parte trabaja cada ejercicio ---------- */
+// Cada zona recorta el dibujo de su músculo (mitad derecha del cuerpo, x ≥ 80) con un rectángulo
+const ZONAS = {
+  pec_sup:{n:"Pecho superior (clavicular)", g:"Pecho", l:"F", p:[["pecho",[80,57,44,17]]]},
+  pec_med:{n:"Pecho medio", g:"Pecho", l:"F", p:[["pecho",[80,74,44,13]]]},
+  pec_inf:{n:"Pecho inferior", g:"Pecho", l:"F", p:[["pecho",[80,87,44,14]]]},
+  del_ant:{n:"Deltoide anterior", g:"Hombro", l:"F", p:[["hombro_a",[110,57,24,37]]]},
+  del_lat:{n:"Deltoide lateral", g:"Hombro", l:"FB", p:[["hombro_l",[127,58,15,40]]]},
+  del_post:{n:"Deltoide posterior", g:"Hombro", l:"B", p:[["hombro_p",[107,57,32,31]]]},
+  trap_sup:{n:"Trapecio superior", g:"Espalda", l:"B", p:[["trapecio",[80,44,36,18]]]},
+  esp_media:{n:"Espalda media (romboides y trapecio medio)", g:"Espalda", l:"B", p:[["trapecio",[80,62,36,46]],["espalda",[90,66,30,36]]]},
+  dorsal_alto:{n:"Dorsal alto y exterior (amplitud)", g:"Espalda", l:"B", p:[["dorsal",[85,94,35,32]]]},
+  dorsal_bajo:{n:"Dorsal bajo", g:"Espalda", l:"B", p:[["dorsal",[85,126,35,31]]]},
+  lumbar:{n:"Lumbares", g:"Espalda", l:"B", p:[["lumbar",[80,108,21,70]]]},
+  bic_larga:{n:"Bíceps: cabeza larga (exterior)", g:"Bíceps", l:"F", p:[["biceps",[130,90,13,46]]]},
+  bic_corta:{n:"Bíceps: cabeza corta (interior)", g:"Bíceps", l:"F", p:[["biceps",[117,90,13,46]]]},
+  braquial:{n:"Braquial y braquiorradial", g:"Bíceps", l:"F", p:[["antebrazo",[120,135,28,25]]]},
+  tri_larga:{n:"Tríceps: cabeza larga (interior)", g:"Tríceps", l:"B", p:[["triceps",[117,86,12,50]]]},
+  tri_lat:{n:"Tríceps: cabezas lateral y medial", g:"Tríceps", l:"B", p:[["triceps",[129,86,13,50]]]},
+  cuad_recto:{n:"Recto femoral (centro del muslo)", g:"Cuádriceps", l:"F", p:[["cuadriceps",[98,182,10,82]]]},
+  cuad_lat:{n:"Vasto lateral (exterior)", g:"Cuádriceps", l:"F", p:[["cuadriceps",[108,182,10,82]]]},
+  cuad_med:{n:"Vasto medial (interior, sobre la rodilla)", g:"Cuádriceps", l:"F", p:[["cuadriceps",[88,182,10,82]]]},
+  femoral:{n:"Femorales", g:"Femoral", l:"B", p:[["femoral",[86,224,29,40]]]},
+  glu_mayor:{n:"Glúteo mayor", g:"Glúteo", l:"B", p:[["gluteo",[80,178,39,52]]]},
+  glu_medio:{n:"Glúteo medio (lateral)", g:"Glúteo", l:"B", p:[["abductor",[100,164,19,26]]]},
+  aductor:{n:"Aductores", g:"Glúteo", l:"F", p:[["aductor",[80,194,12,56]]]},
+  gastro:{n:"Gemelos (gastrocnemio)", g:"Gemelo", l:"B", p:[["gemelo",[92,262,23,38]]]},
+  soleo:{n:"Sóleo", g:"Gemelo", l:"B", p:[["gemelo",[92,300,23,24]]]},
+  abd_sup:{n:"Abdomen: parte alta", g:"Abdomen", l:"F", p:[["abdomen",[80,99,22,43]]]},
+  abd_inf:{n:"Abdomen: parte baja", g:"Abdomen", l:"F", p:[["abdomen",[80,142,22,46]]]},
+  oblicuos:{n:"Oblicuos (giros y antirrotación)", g:"Abdomen", l:"F", p:[["oblicuos",[100,97,17,82]]]},
+  antebrazo:{n:"Antebrazo y agarre", g:"Bíceps", l:"FB", p:[["antebrazo",[120,135,28,60]]]}
+};
+const GRUPOS_Z = ["Pecho","Espalda","Hombro","Bíceps","Tríceps","Cuádriceps","Femoral","Glúteo","Gemelo","Abdomen"];
+// Por ejercicio: zonas (1 = principal, 0.5 = secundaria), por qué (según agarre y técnica) y cómo cambiar el foco
+const ZONAS_EJ = {
+  "Press de banca con barra":{z:{pec_med:1, pec_inf:0.5, del_ant:0.5, tri_lat:0.5}, f:"Agarre algo más ancho que los hombros y bajando a la parte baja del pecho: carga sobre todo el pecho medio. Ayudan el deltoide anterior y el tríceps.", a:"Más cerrado: más tríceps. En banco inclinado: más pecho superior."},
+  "Press inclinado con mancuernas":{z:{pec_sup:1, del_ant:0.5, pec_med:0.5, tri_lat:0.5}, f:"El banco a 30-45° pone el brazo en línea con las fibras altas: pecho superior. Las mancuernas a 45° cuidan el hombro.", a:"Más de 45° de inclinación: el hombro anterior se lleva el trabajo."},
+  "Cruces en polea alta":{z:{pec_inf:1, pec_med:0.5}, f:"La polea alta tira de arriba abajo: el cable sigue las fibras bajas del pecho.", a:"Polea a media altura: pecho medio. Polea baja hacia arriba: pecho superior."},
+  "Fondos en paralelas":{z:{pec_inf:1, tri_lat:1, del_ant:0.5}, f:"Con el tronco inclinado adelante: pecho inferior y tríceps a partes iguales.", a:"Tronco recto y codos pegados: casi todo tríceps."},
+  "Aperturas en contractor":{z:{pec_med:1, del_ant:0.5}, f:"Asas a la altura del pecho y brazos cerrando en horizontal: pecho medio, sin ayuda del tríceps.", a:"Asiento más bajo (manos más altas que los hombros): baja hacia el pecho inferior."},
+  "Press inclinado en máquina Smith":{z:{pec_sup:1, del_ant:0.5, tri_lat:0.5}, f:"Banco a 30° y bajando a la parte alta del pecho: pecho superior.", a:"Agarre más cerrado: más tríceps y hombro anterior."},
+  "Press francés con barra Z":{z:{tri_larga:1, tri_lat:0.5}, f:"Codos apuntando al techo (brazo algo por encima del hombro): estira la cabeza larga, la parte interior y más grande del tríceps.", a:"Bajando la barra detrás de la cabeza, la cabeza larga trabaja aún más."},
+  "Extensión en polea alta con cuerda":{z:{tri_lat:1, tri_larga:0.5}, f:"Codos pegados al cuerpo y separando la cuerda al final: cabezas lateral y medial, la parte exterior del brazo que da forma de herradura.", a:"Con barra recta y agarre prono: aún más cabeza lateral."},
+  "Extensión sobre la cabeza con mancuerna":{z:{tri_larga:1, tri_lat:0.5}, f:"Con los brazos por encima de la cabeza, la cabeza larga trabaja estirada: es la que más volumen da al brazo.", a:""},
+  "Extensión sobre la cabeza (superserie B)":{z:{tri_larga:1, tri_lat:0.5}, f:"Brazos por encima de la cabeza: cabeza larga del tríceps en estiramiento.", a:""},
+  "Sentadilla trasera con barra":{z:{cuad_lat:1, cuad_med:1, glu_mayor:0.5, aductor:0.5, cuad_recto:0.5}, f:"Bajando al menos a paralelo: trabajan sobre todo los vastos (exterior e interior del muslo), con ayuda de glúteo y aductores.", a:"Pies más abiertos y más profundidad: más glúteo y aductores."},
+  "Prensa inclinada 45°":{z:{cuad_lat:1, cuad_med:1, glu_mayor:0.5}, f:"Pies a la anchura de las caderas y a media plataforma: cuádriceps (vastos) con algo de glúteo.", a:"Pies más arriba en la plataforma: más glúteo y femoral. Más abajo: más cuádriceps."},
+  "Extensión de cuádriceps":{z:{cuad_recto:1, cuad_lat:0.5, cuad_med:0.5}, f:"Es el ejercicio que más trabaja el recto femoral (centro del muslo), porque la cadera queda flexionada y no ayuda.", a:"Echando el respaldo hacia atrás, el recto femoral se estira y trabaja más."},
+  "Zancada hacia atrás con mancuernas":{z:{glu_mayor:1, cuad_med:0.5, cuad_lat:0.5, aductor:0.5}, f:"Paso largo hacia atrás e inclinando un poco el tronco: el glúteo de la pierna de delante hace la mayor parte.", a:"Paso más corto y tronco recto: más cuádriceps."},
+  "Sentadilla búlgara":{z:{cuad_med:1, glu_mayor:1, cuad_lat:0.5, aductor:0.5}, f:"Una pierna cada vez: cuádriceps y glúteo de la pierna de delante.", a:"Pie de delante más lejos del banco y tronco inclinado: más glúteo."},
+  "Abducción de cadera en máquina":{z:{glu_medio:1}, f:"Abrir las piernas contra resistencia: glúteo medio, la parte lateral y alta de la cadera.", a:"Inclinando el tronco adelante, entra más el glúteo mayor."},
+  "Curl femoral tumbado":{z:{femoral:1, gastro:0.5}, f:"Doblar la rodilla con la cadera pegada al banco: femorales en su función de rodilla. Los gemelos ayudan.", a:"Con los pies en punta (sin flexionar el tobillo), el gemelo ayuda menos."},
+  "Peso muerto convencional":{z:{glu_mayor:1, femoral:1, lumbar:1, trap_sup:0.5, cuad_lat:0.5, antebrazo:0.5}, f:"Extender la cadera con la barra pegada: glúteo, femorales y lumbares. El trapecio y el antebrazo sujetan la barra.", a:"Peso muerto rumano (rodillas casi quietas): más femorales."},
+  "Hip thrust con barra":{z:{glu_mayor:1, femoral:0.5, glu_medio:0.5}, f:"Bloquear la cadera arriba con la barbilla recogida: el ejercicio que más carga el glúteo mayor en contracción.", a:"Pies más lejos: más femorales. Más cerca: más cuádriceps."},
+  "Patada de glúteo en polea":{z:{glu_mayor:1, glu_medio:0.5, femoral:0.5}, f:"Empujar atrás y arriba con el tronco fijo: glúteo mayor, sin que la lumbar ayude.", a:"Llevando la pierna atrás y algo hacia fuera: más glúteo medio."},
+  "Elevación de talones de pie":{z:{gastro:1, soleo:0.5}, f:"Con la rodilla estirada trabaja sobre todo el gemelo (gastrocnemio), la parte alta de la pantorrilla.", a:""},
+  "Elevación de talones sentado":{z:{soleo:1, gastro:0.5}, f:"Con la rodilla doblada el gemelo se relaja y trabaja el sóleo, el músculo de debajo que da anchura a la pantorrilla.", a:""},
+  "Dominadas":{z:{dorsal_alto:1, dorsal_bajo:0.5, esp_media:0.5, braquial:0.5, bic_larga:0.5}, f:"Agarre prono ancho (1,2-1,5 veces los hombros) y codos hacia abajo: dorsal alto y exterior, la «V» de la espalda.", a:"Agarre supino estrecho: más dorsal bajo y bíceps."},
+  "Jalón al pecho":{z:{dorsal_alto:1, esp_media:0.5, bic_larga:0.5, del_post:0.5}, f:"Agarre prono ancho y barra a la parte alta del pecho: dorsal alto y exterior (amplitud).", a:"Con agarre neutro o supino estrecho y codos pegados: dorsal bajo."},
+  "Remo con barra":{z:{esp_media:1, dorsal_bajo:1, del_post:0.5, lumbar:0.5, bic_larga:0.5}, f:"Agarre prono a la anchura de los hombros, codos a 45° y tirando al ombligo: reparte entre espalda media y dorsal bajo. Las lumbares sujetan el tronco.", a:"Codos más abiertos y hacia el pecho: más espalda media. Agarre supino y codos pegados: más dorsal bajo."},
+  "Remo sentado en polea baja":{z:{esp_media:1, del_post:1, dorsal_alto:0.5, bic_larga:0.5}, f:"Barra recta, agarre prono ancho y codos abiertos (60-70°) hacia la parte baja del pecho: espalda media (romboides y trapecio medio) y deltoide posterior, el «grosor» de la espalda.", a:"Con el triángulo (neutro) y los codos pegados tirando al ombligo: dorsal bajo."},
+  "Remo con mancuerna a una mano":{z:{dorsal_bajo:1, dorsal_alto:0.5, esp_media:0.5, bic_larga:0.5}, f:"Agarre neutro, codo pegado y tirando hacia la cadera: dorsal bajo, la parte de la espalda que llega a la cintura.", a:"Codo abierto tirando hacia el pecho: espalda media y deltoide posterior."},
+  "Pullover en polea alta":{z:{dorsal_bajo:1, dorsal_alto:0.5, tri_larga:0.5}, f:"Codos casi rectos bajando hasta los muslos: el dorsal trabaja solo, sin ayuda del bíceps, sobre todo su parte baja.", a:""},
+  "Face pull":{z:{del_post:1, esp_media:1, trap_sup:0.5}, f:"Polea a la altura de la cara y abriendo los codos: deltoide posterior y espalda media. Cuida la salud del hombro.", a:""},
+  "Pájaros en polea":{z:{del_post:1, esp_media:0.5}, f:"Cables cruzados y brazos casi rectos abriendo atrás: deltoide posterior.", a:"Si juntas mucho las escápulas al final, entra más la espalda media."},
+  "Pájaros en contractor inverso":{z:{del_post:1, esp_media:0.5}, f:"Brazos casi rectos abriendo hacia atrás: deltoide posterior.", a:""},
+  "Encogimientos":{z:{trap_sup:1, antebrazo:0.5}, f:"Subir los hombros en vertical: trapecio superior, la parte entre el cuello y el hombro.", a:""},
+  "Press militar de pie":{z:{del_ant:1, del_lat:0.5, tri_lat:0.5, pec_sup:0.5}, f:"Empujar por encima de la cabeza: deltoide anterior sobre todo, con ayuda del lateral y del tríceps.", a:"Agarre algo más ancho: algo más deltoide lateral."},
+  "Elevaciones laterales":{z:{del_lat:1, trap_sup:0.5}, f:"Subir los brazos por los lados hasta la altura del hombro: deltoide lateral, el que da anchura a los hombros.", a:"Si subes por encima del hombro o encoges, el trapecio se lleva el trabajo."},
+  "Elevación lateral en polea a una mano":{z:{del_lat:1}, f:"Con el cable por delante del cuerpo, la tensión empieza desde abajo: deltoide lateral en todo el recorrido.", a:""},
+  "Curl con barra":{z:{bic_corta:1, bic_larga:1, braquial:0.5}, f:"Agarre supino a la anchura de los hombros: las dos cabezas del bíceps por igual.", a:"Agarre más ancho: más cabeza corta. Más cerrado: más cabeza larga."},
+  "Curl martillo alterno":{z:{braquial:1, bic_larga:0.5, antebrazo:0.5}, f:"Agarre neutro (pulgares arriba): braquial y braquiorradial, que empujan el bíceps hacia arriba y engordan el brazo.", a:""},
+  "Curl en banco predicador (barra Z)":{z:{bic_corta:1, braquial:0.5}, f:"Con las axilas pegadas al cojín y el brazo por delante del cuerpo: cabeza corta (la parte interior del bíceps).", a:"Curl inclinado en banco (brazos por detrás del cuerpo): cabeza larga."},
+  "Curl en polea baja (superserie A)":{z:{bic_corta:1, bic_larga:0.5}, f:"Tensión constante del cable con agarre supino: bíceps, sobre todo cabeza corta.", a:""},
+  "Crunch en polea alta":{z:{abd_sup:1, abd_inf:0.5}, f:"Doblar la columna (no la cadera) con la cuerda junto a la cabeza: abdomen, sobre todo la parte alta.", a:""},
+  "Elevación de piernas colgado":{z:{abd_inf:1, oblicuos:0.5, antebrazo:0.5}, f:"Subir las piernas enrollando la pelvis: parte baja del abdomen.", a:"Si solo subes las rodillas sin enrollar la pelvis, trabaja más la cadera que el abdomen."},
+  "Rueda abdominal":{z:{abd_sup:1, abd_inf:1, dorsal_alto:0.5}, f:"Resistir que la espalda se arquee al estirarte: todo el recto abdominal. El dorsal ayuda a volver.", a:""},
+  "Pallof press":{z:{oblicuos:1, abd_sup:0.5}, f:"Empujar al frente sin dejarte girar: oblicuos y core en antirrotación.", a:""},
+  "Plancha frontal":{z:{abd_sup:0.5, abd_inf:0.5}, f:"Aguantar el tronco recto: todo el abdomen de forma isométrica.", a:""}
+};
+// Si un ejercicio no tiene ficha, sus músculos de la biblioteca se reparten por zonas
+const ZONAS_MUS = {pecho:["pec_med","pec_sup","pec_inf"], hombro_a:["del_ant"], hombro_l:["del_lat"], hombro_p:["del_post"], trapecio:["trap_sup"], espalda:["esp_media"],
+  dorsal:["dorsal_alto","dorsal_bajo"], lumbar:["lumbar"], biceps:["bic_larga","bic_corta"], triceps:["tri_larga","tri_lat"], antebrazo:["antebrazo"],
+  cuadriceps:["cuad_recto","cuad_lat","cuad_med"], femoral:["femoral"], gluteo:["glu_mayor"], abductor:["glu_medio"], aductor:["aductor"], gemelo:["gastro","soleo"],
+  abdomen:["abd_sup","abd_inf"], oblicuos:["oblicuos"]};
+let IDX_Z = null;
+function zonasDe(nombre){
+  if (!IDX_Z){ IDX_Z = new Map(); Object.entries(ZONAS_EJ).forEach(([k, v]) => IDX_Z.set(claveEj(k), v)); }
+  const pe = planEj(nombre) || {};
+  const d = IDX_Z.get(claveEj(nombre)) || (pe.hoja && IDX_Z.get(claveEj(pe.hoja))) || ((pe.antes || []).map(a => IDX_Z.get(claveEj(a))).find(Boolean));
+  if (d) return Object.assign({ficha:true}, d);
+  const lib = bibEj(nombre); if (!lib || lib.m === "cardio") return null;
+  const z = {};
+  const poner = (ms, v) => (ms || []).forEach(m => { const L = ZONAS_MUS[m] || []; L.forEach(k => { z[k] = Math.max(z[k] || 0, L.length > 1 ? v * 0.6 : v); }); });
+  poner(lib.s, 0.5); poner(lib.p, 1);
+  return Object.keys(z).length ? {z, f:"", a:""} : null;
+}
+// Dibujo: solo la parte del cuerpo donde están las zonas, con la principal en verde intenso
+function zonasSVG(Z, opt = {}){
+  const id = "zn" + (++svgN), act = Object.entries(Z || {}).filter(([k, v]) => ZONAS[k] && v > 0);
+  if (!act.length) return "";
+  const prin = act.filter(([, v]) => v >= 1);
+  let lados = [...new Set((prin.length ? prin : act).map(([k]) => ZONAS[k].l).filter(l => l !== "FB"))];
+  if (!lados.length) lados = ["F"];
+  lados = ["F", "B"].filter(l => lados.includes(l));
+  const caja = act.reduce((b, [k]) => { if (ZONAS[k].l !== "FB" && !lados.includes(ZONAS[k].l)) return b; ZONAS[k].p.forEach(([, r]) => { b.x2 = Math.max(b.x2, r[0] + r[2]); b.y1 = Math.min(b.y1, r[1]); b.y2 = Math.max(b.y2, r[1] + r[3]); }); return b; }, {x2:0, y1:999, y2:0});
+  const pad = 9, x2 = Math.min(160, Math.max(caja.x2 + pad, 118)), x1 = 160 - x2;
+  let y1 = Math.max(0, caja.y1 - pad), y2 = Math.min(360, caja.y2 + pad);
+  if (y2 - y1 < 70){ const c = (y1 + y2) / 2; y1 = Math.max(0, c - 35); y2 = y1 + 70; }
+  const w = x2 - x1, h = y2 - y1, gap = 10;
+  const espejo = `transform="translate(160,0) scale(-1,1)"`;
+  let defs = "", nc = 0;
+  const lado = (L, dx) => {
+    const MUS = L === "F" ? MUS_F : MUS_B;
+    const base = Object.entries(MUS).map(([k, d]) => `<path d="${d}" class="m" fill="var(--mus-0)"/>`).join("") + (L === "F" ? DET_F : "");
+    const zon = act.filter(([k]) => ZONAS[k].l === L || ZONAS[k].l === "FB").map(([k, v]) => ZONAS[k].p.filter(([m]) => MUS[m]).map(([m, r]) => {
+      const cid = `${id}c${++nc}`; defs += `<clipPath id="${cid}"><rect x="${r[0]}" y="${r[1]}" width="${r[2]}" height="${r[3]}"/></clipPath>`;
+      return `<path d="${MUS[m]}" clip-path="url(#${cid})" fill="var(--neon)" fill-opacity="${v >= 1 ? 1 : v >= 0.5 ? 0.42 : 0.25}" ${v >= 1 ? `filter="url(#${id}g)"` : ""} class="zn"/>`;
+    }).join("")).join("");
+    return `<g transform="translate(${dx - x1},${-y1})"><g class="sil">${CABEZA}<path d="${SIL}"/><path d="${SIL}" ${espejo}/></g><g class="sil-f">${CABEZA}<path d="${SIL}"/><path d="${SIL}" ${espejo}/></g>
+      <g>${base}${zon}<g ${espejo}>${base}${zon}</g></g></g>`;
+  };
+  const cuerpo = lados.map((L, i) => lado(L, i * (w + gap))).join("");
+  const W = lados.length * w + (lados.length - 1) * gap;
+  return `<svg class="cuerpo zonas ${opt.cls || ""}" viewBox="0 0 ${W} ${h}" role="img" aria-label="${esc(opt.label || "Zonas que trabaja")}">
+    <defs><filter id="${id}g" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="1.8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>${defs}</defs>${cuerpo}</svg>`;
+}
+const zonasOrden = Z => Object.entries(Z).sort((a, b) => b[1] - a[1]);
+function zonasEjHTML(nombre, grande){
+  const d = zonasDe(nombre); if (!d) return "";
+  const pr = zonasOrden(d.z).filter(([, v]) => v >= 1).map(([k]) => ZONAS[k].n), se = zonasOrden(d.z).filter(([, v]) => v < 1).map(([k]) => ZONAS[k].n);
+  return `<div class="zonas-ej ${grande ? "g" : ""}">${zonasSVG(d.z, {cls: grande ? "" : "mini"})}<div class="small">
+    <div><span class="dot" style="background:var(--neon)"></span> <b>${esc(pr.join(" · "))}</b></div>
+    ${se.length ? `<div class="muted"><span class="dot" style="background:rgba(57,255,20,.42)"></span> ${esc(se.join(" · "))}</div>` : ""}
+    ${grande && d.f ? `<div style="margin-top:6px">🎯 ${esc(d.f)}</div>` : ""}${grande && d.a ? `<div class="muted" style="margin-top:4px">↔ ${esc(d.a)}</div>` : ""}
+  </div></div>${!grande && d.f ? `<details class="zonas-por small"><summary>🎯 Por qué trabaja aquí</summary><div>${esc(d.f)}</div>${d.a ? `<div class="muted" style="margin-top:4px">↔ ${esc(d.a)}</div>` : ""}</details>` : ""}`;
+}
+// Reparto semanal por zona: series efectivas × 1 (principal) o × ½ (secundaria)
+function repartoZonas(modo){
+  const r = {}, suma = (nombre, n) => { const d = zonasDe(nombre); if (!d || !n) return; Object.entries(d.z).forEach(([k, v]) => { r[k] = (r[k] || 0) + n * (v >= 1 ? 1 : 0.5); }); };
+  if (modo === "hecho"){
+    const hasta = hoyISO(), desde = addDias(hasta, -27);
+    S.sesiones.forEach(s => { if (s.fecha < desde || s.fecha > hasta) return; (s.ejercicios || []).forEach(e => { if (e.modo === "marca" || e.modo === "cardio") return; suma(e.nombre, efec(e.series).filter(x => x.reps != null || x.kg != null).length / 4); }); });
+  } else {
+    planDe(hoyISO()).forEach(s => (s.ejercicios || []).forEach(e => { if (e.modo === "marca" || e.modo === "cardio") return; const m = String(e.objetivo || "").match(/^(\d+)\s*×/); suma(e.nombre, m ? +m[1] : 3); }));
+  }
+  return r;
+}
+function repartoHTML(){
+  const modo = S.repZ || "rutina", R = repartoZonas(modo);
+  const filas = GRUPOS_Z.map(g => {
+    const ks = Object.keys(ZONAS).filter(k => ZONAS[k].g === g && !(g === "Bíceps" && k === "antebrazo" && !R[k]));
+    const tot = ks.reduce((a, k) => a + (R[k] || 0), 0); if (!tot) return "";
+    const mx = Math.max(...ks.map(k => R[k] || 0));
+    const heat = Object.fromEntries(ks.map(k => [k, (R[k] || 0) / mx]));
+    const bajos = ks.filter(k => ks.length > 1 && (R[k] || 0) < mx * 0.35);
+    return `<div class="rep-g"><div class="rep-dib">${zonasSVG(Object.fromEntries(Object.entries(heat).filter(([, v]) => v > 0).map(([k, v]) => [k, v >= 0.75 ? 1 : v >= 0.35 ? 0.5 : 0.25])), {cls:"mini"})}</div>
+      <div class="grow"><div class="row between"><b>${esc(g)}</b><span class="muted small">${fmt(tot, 1)} series/sem</span></div>
+      ${ks.map(k => `<div class="rep-z"><span class="small">${esc(ZONAS[k].n)}</span><div class="rep-bar"><i style="width:${Math.round((R[k] || 0) / mx * 100)}%"></i></div><span class="small n">${fmt(R[k] || 0, 1)}</span></div>`).join("")}
+      ${bajos.length ? `<div class="muted small" style="margin-top:4px">Poco trabajo en: ${esc(bajos.map(k => ZONAS[k].n.split(" (")[0]).join(", "))}</div>` : ""}</div></div>`;
+  }).join("");
+  return `<section class="card sec"><div class="sec-h"><span class="eyebrow">Reparto por zonas de cada músculo</span></div>
+    <div class="seg" role="group" aria-label="Qué mostrar" style="align-self:flex-start"><button data-act="repZ" data-m="rutina" aria-pressed="${modo === "rutina"}">Tu rutina</button><button data-act="repZ" data-m="hecho" aria-pressed="${modo === "hecho"}">Lo que has hecho (4 sem.)</button></div>
+    <span class="muted small">Series efectivas por semana en cada zona: la principal de cada ejercicio cuenta 1 y la secundaria ½. Verde intenso = la zona más trabajada del músculo.</span>
+    ${filas || `<div class="empty">Aún no hay datos.</div>`}</section>`;
+}
+
 function mapaEjercicio(e, cls){
   const p = e.p || [], s = e.s || [];
   return cuerpoSVG(k => p.includes(k) ? {fill:"var(--neon)", glow:true} : s.includes(k) ? {fill:"rgba(57,255,20,.32)"} : null, {cls: cls || "mini", etiquetas:false, label:"Músculos que trabaja"});
@@ -2884,6 +3071,7 @@ function fichaHTML(nombre){
     ${(e.p||[]).length ? `<section class="card sec"><span class="eyebrow">Músculos</span>
       <div class="ficha-mus">${mapaEjercicio(e)}<div class="small"><div><span class="dot" style="background:var(--neon)"></span> <b>Principal:</b> ${esc((e.p||[]).map(nombreMus).join(", "))}</div>
       ${(e.s||[]).length ? `<div><span class="dot" style="background:rgba(57,255,20,.4)"></span> <b>Secundario:</b> ${esc(e.s.map(nombreMus).join(", "))}</div>` : ""}</div></div></section>` : ""}
+    ${(() => { const zh = zonasEjHTML(nombre, true); return zh ? `<section class="card sec"><span class="eyebrow">Qué zona trabajas</span>${zh}</section>` : ""; })()}
     ${(() => { const pe = planEj(nombre) || todasRutinas().reduce((a, p) => a || (p.ejercicios||[]).find(x => (x.agarre || x.tecnica) && bibEj(x.nombre) === e), null);
       return pe && (pe.agarre || pe.tecnica) ? `<section class="card sec"><span class="eyebrow">En tu plan</span>${pe.agarre ? `<div class="small"><b>✋ Agarre:</b> ${esc(pe.agarre)}</div>` : ""}${pe.tecnica ? `<div class="small"><b>${pe.agarre ? "Técnica" : "Agarre y técnica"}:</b> ${esc(pe.tecnica)}</div>` : ""}</section>` : ""; })()}
     ${fam && fam.pasos ? `<section class="card sec"><span class="eyebrow">Cómo se hace</span><ol class="pasos">${fam.pasos.map(p => `<li>${esc(p)}</li>`).join("")}</ol></section>` : ""}
@@ -3520,6 +3708,7 @@ view.addEventListener("click", async e => {
   if (a === "tab"){ S.tab = b.dataset.tab; render(); window.scrollTo(0,0); }
   // biblioteca, mis entrenamientos y mapa
   else if (a === "verEj") abrirBib({modo:"ver", ficha:b.dataset.n});
+  else if (a === "repZ"){ S.repZ = b.dataset.m; render(); }
   else if (a === "calMes"){ const [y, m] = (S.calMes || hoyISO().slice(0, 7)).split("-").map(Number), d = new Date(y, m - 1 + (+b.dataset.d), 1); S.calMes = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; S.calDia = null; render(); }
   else if (a === "calDia"){ const f = b.dataset.f || null; S.calDia = f && S.calDia !== f ? f : null; render(); }
   else if (a === "calHoy"){ S.calMes = null; S.calDia = null; render(); }
