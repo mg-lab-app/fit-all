@@ -796,9 +796,28 @@ function planAgarre(){
   });
   return hecho;
 }
+// 25/11/2026: equilibrar zonas (cabeza larga del tríceps y aductores)
+const EQUILIBRIO_C3 = {
+  1: {"Extensión en polea alta con cuerda": {nombre:"Extensión en polea por encima de la cabeza (cuerda)", hoja:"Extensión en polea alta con cuerda",
+      tecnica:"De espaldas a la polea alta, cuerda por detrás de la cabeza y codos apuntando al frente. Baja hasta notar el tríceps estirado y extiende sin mover los codos."}},
+  7: {"Prensa inclinada 45°": {tecnica:"Pies altos y algo más abiertos que las caderas, puntas un poco hacia fuera. Baja hasta donde la pelvis no se despegue del respaldo y empuja con los talones.",
+      zonas:{z:{glu_mayor:1, aductor:1, femoral:0.5, cuad_med:0.5, cuad_lat:0.5}, f:"Con los pies altos y abiertos la cadera se dobla más: trabajan sobre todo el glúteo y los aductores, y el cuádriceps ayuda.", a:"Pies bajos y a la anchura de las caderas: vuelve a ser sobre todo cuádriceps."}}}
+};
+function equilibrioC3(){
+  const d = S.planDoc || {}; if (!d.desde || lsGet("fitall_equilibrio_c3")) return false;
+  let hecho = false;
+  d.sesiones = (d.sesiones || []).map(s => {
+    const T = EQUILIBRIO_C3[s.n]; if (!T) return s;
+    const L = (s.ejercicios || []).map(e => T[e.nombre] ? (hecho = true, Object.assign({}, e, T[e.nombre])) : e);
+    return Object.assign({}, s, {ejercicios: L});
+  });
+  lsSet("fitall_equilibrio_c3", 1);
+  if (hecho){ S.plan = planDe(hoyISO()); guardarPlanDoc(); }
+  return hecho;
+}
 function migrarPlan(){
   const d = S.planDoc || {};
-  if (d.desde) return;                       // ya tiene el ciclo 3: nada que migrar
+  if (d.desde){ equilibrioC3(); return; }    // ya tiene el ciclo 3
   S.plan = d.sesiones || [];
   const P = S.plan;
   if (!P.length) return;
@@ -809,6 +828,7 @@ function migrarPlan(){
   S.planDoc = {sesiones: JSON.parse(JSON.stringify(PLAN_C3)), desde: C3_DESDE, anteriores: [{hasta: addDias(C3_DESDE, -1), sesiones: S.plan}]};
   S.plan = planDe(hoyISO());
   guardarPlanDoc();
+  equilibrioC3();
 }
 async function init(){
   render();
@@ -2772,12 +2792,13 @@ const ZONAS_EJ = {
   "Aperturas en contractor":{z:{pec_med:1, del_ant:0.5}, f:"Asas a la altura del pecho y brazos cerrando en horizontal: pecho medio, sin ayuda del tríceps.", a:"Asiento más bajo (manos más altas que los hombros): baja hacia el pecho inferior."},
   "Press inclinado en máquina Smith":{z:{pec_sup:1, del_ant:0.5, tri_lat:0.5}, f:"Banco a 30° y bajando a la parte alta del pecho: pecho superior.", a:"Agarre más cerrado: más tríceps y hombro anterior."},
   "Press francés con barra Z":{z:{tri_larga:1, tri_lat:0.5}, f:"Codos apuntando al techo (brazo algo por encima del hombro): estira la cabeza larga, la parte interior y más grande del tríceps.", a:"Bajando la barra detrás de la cabeza, la cabeza larga trabaja aún más."},
+  "Extensión en polea por encima de la cabeza (cuerda)":{z:{tri_larga:1, tri_lat:0.5}, f:"De espaldas a la polea y con los codos por encima de la cabeza, la cabeza larga trabaja estirada: es la parte interior y más grande del tríceps.", a:"Si lo haces hacia abajo con los codos pegados (extensión normal), pasa a trabajar más la cabeza lateral."},
   "Extensión en polea alta con cuerda":{z:{tri_lat:1, tri_larga:0.5}, f:"Codos pegados al cuerpo y separando la cuerda al final: cabezas lateral y medial, la parte exterior del brazo que da forma de herradura.", a:"Con barra recta y agarre prono: aún más cabeza lateral."},
   "Extensión sobre la cabeza con mancuerna":{z:{tri_larga:1, tri_lat:0.5}, f:"Con los brazos por encima de la cabeza, la cabeza larga trabaja estirada: es la que más volumen da al brazo.", a:""},
   "Extensión sobre la cabeza (superserie B)":{z:{tri_larga:1, tri_lat:0.5}, f:"Brazos por encima de la cabeza: cabeza larga del tríceps en estiramiento.", a:""},
   "Sentadilla trasera con barra":{z:{cuad_lat:1, cuad_med:1, glu_mayor:0.5, aductor:0.5, cuad_recto:0.5}, f:"Bajando al menos a paralelo: trabajan sobre todo los vastos (exterior e interior del muslo), con ayuda de glúteo y aductores.", a:"Pies más abiertos y más profundidad: más glúteo y aductores."},
   "Prensa inclinada 45°":{z:{cuad_lat:1, cuad_med:1, glu_mayor:0.5}, f:"Pies a la anchura de las caderas y a media plataforma: cuádriceps (vastos) con algo de glúteo.", a:"Pies más arriba en la plataforma: más glúteo y femoral. Más abajo: más cuádriceps."},
-  "Extensión de cuádriceps":{z:{cuad_recto:1, cuad_lat:0.5, cuad_med:0.5}, f:"Es el ejercicio que más trabaja el recto femoral (centro del muslo), porque la cadera queda flexionada y no ayuda.", a:"Echando el respaldo hacia atrás, el recto femoral se estira y trabaja más."},
+  "Extensión de cuádriceps":{z:{cuad_recto:1, cuad_lat:0.5, cuad_med:0.5}, f:"Es el ejercicio que más trabaja el recto femoral (centro del muslo), porque la cadera queda flexionada y no ayuda.", a:"Hazlo sentado normal (con la cadera doblada): así es como más crece el recto femoral según los estudios."},
   "Zancada hacia atrás con mancuernas":{z:{glu_mayor:1, cuad_med:0.5, cuad_lat:0.5, aductor:0.5}, f:"Paso largo hacia atrás e inclinando un poco el tronco: el glúteo de la pierna de delante hace la mayor parte.", a:"Paso más corto y tronco recto: más cuádriceps."},
   "Sentadilla búlgara":{z:{cuad_med:1, glu_mayor:1, cuad_lat:0.5, aductor:0.5}, f:"Una pierna cada vez: cuádriceps y glúteo de la pierna de delante.", a:"Pie de delante más lejos del banco y tronco inclinado: más glúteo."},
   "Abducción de cadera en máquina":{z:{glu_medio:1}, f:"Abrir las piernas contra resistencia: glúteo medio, la parte lateral y alta de la cadera.", a:"Inclinando el tronco adelante, entra más el glúteo mayor."},
@@ -2787,11 +2808,11 @@ const ZONAS_EJ = {
   "Patada de glúteo en polea":{z:{glu_mayor:1, glu_medio:0.5, femoral:0.5}, f:"Empujar atrás y arriba con el tronco fijo: glúteo mayor, sin que la lumbar ayude.", a:"Llevando la pierna atrás y algo hacia fuera: más glúteo medio."},
   "Elevación de talones de pie":{z:{gastro:1, soleo:0.5}, f:"Con la rodilla estirada trabaja sobre todo el gemelo (gastrocnemio), la parte alta de la pantorrilla.", a:""},
   "Elevación de talones sentado":{z:{soleo:1, gastro:0.5}, f:"Con la rodilla doblada el gemelo se relaja y trabaja el sóleo, el músculo de debajo que da anchura a la pantorrilla.", a:""},
-  "Dominadas":{z:{dorsal_alto:1, dorsal_bajo:0.5, esp_media:0.5, braquial:0.5, bic_larga:0.5}, f:"Agarre prono ancho (1,2-1,5 veces los hombros) y codos hacia abajo: dorsal alto y exterior, la «V» de la espalda.", a:"Agarre supino estrecho: más dorsal bajo y bíceps."},
-  "Jalón al pecho":{z:{dorsal_alto:1, esp_media:0.5, bic_larga:0.5, del_post:0.5}, f:"Agarre prono ancho y barra a la parte alta del pecho: dorsal alto y exterior (amplitud).", a:"Con agarre neutro o supino estrecho y codos pegados: dorsal bajo."},
-  "Remo con barra":{z:{esp_media:1, dorsal_bajo:1, del_post:0.5, lumbar:0.5, bic_larga:0.5}, f:"Agarre prono a la anchura de los hombros, codos a 45° y tirando al ombligo: reparte entre espalda media y dorsal bajo. Las lumbares sujetan el tronco.", a:"Codos más abiertos y hacia el pecho: más espalda media. Agarre supino y codos pegados: más dorsal bajo."},
-  "Remo sentado en polea baja":{z:{esp_media:1, del_post:1, dorsal_alto:0.5, bic_larga:0.5}, f:"Barra recta, agarre prono ancho y codos abiertos (60-70°) hacia la parte baja del pecho: espalda media (romboides y trapecio medio) y deltoide posterior, el «grosor» de la espalda.", a:"Con el triángulo (neutro) y los codos pegados tirando al ombligo: dorsal bajo."},
-  "Remo con mancuerna a una mano":{z:{dorsal_bajo:1, dorsal_alto:0.5, esp_media:0.5, bic_larga:0.5}, f:"Agarre neutro, codo pegado y tirando hacia la cadera: dorsal bajo, la parte de la espalda que llega a la cintura.", a:"Codo abierto tirando hacia el pecho: espalda media y deltoide posterior."},
+  "Dominadas":{z:{dorsal_alto:1, dorsal_bajo:0.5, esp_media:0.5, braquial:0.5, braquial:0.5}, f:"Agarre prono ancho (1,2-1,5 veces los hombros) y codos hacia abajo: dorsal alto y exterior, la «V» de la espalda.", a:"Agarre supino estrecho: más dorsal bajo y bíceps."},
+  "Jalón al pecho":{z:{dorsal_alto:1, esp_media:0.5, braquial:0.5, del_post:0.5}, f:"Agarre prono ancho y barra a la parte alta del pecho: dorsal alto y exterior (amplitud).", a:"Con agarre neutro o supino estrecho y codos pegados: dorsal bajo."},
+  "Remo con barra":{z:{esp_media:1, dorsal_bajo:1, del_post:0.5, lumbar:0.5, braquial:0.5}, f:"Agarre prono a la anchura de los hombros, codos a 45° y tirando al ombligo: reparte entre espalda media y dorsal bajo. Las lumbares sujetan el tronco.", a:"Codos más abiertos y hacia el pecho: más espalda media. Agarre supino y codos pegados: más dorsal bajo."},
+  "Remo sentado en polea baja":{z:{esp_media:1, del_post:1, dorsal_alto:0.5, braquial:0.5}, f:"Barra recta, agarre prono ancho y codos abiertos (60-70°) hacia la parte baja del pecho: espalda media (romboides y trapecio medio) y deltoide posterior, el «grosor» de la espalda.", a:"Con el triángulo (neutro) y los codos pegados tirando al ombligo: dorsal bajo."},
+  "Remo con mancuerna a una mano":{z:{dorsal_bajo:1, dorsal_alto:0.5, esp_media:0.5, braquial:0.5}, f:"Agarre neutro, codo pegado y tirando hacia la cadera: dorsal bajo, la parte de la espalda que llega a la cintura.", a:"Codo abierto tirando hacia el pecho: espalda media y deltoide posterior."},
   "Pullover en polea alta":{z:{dorsal_bajo:1, dorsal_alto:0.5, tri_larga:0.5}, f:"Codos casi rectos bajando hasta los muslos: el dorsal trabaja solo, sin ayuda del bíceps, sobre todo su parte baja.", a:""},
   "Face pull":{z:{del_post:1, esp_media:1, trap_sup:0.5}, f:"Polea a la altura de la cara y abriendo los codos: deltoide posterior y espalda media. Cuida la salud del hombro.", a:""},
   "Pájaros en polea":{z:{del_post:1, esp_media:0.5}, f:"Cables cruzados y brazos casi rectos abriendo atrás: deltoide posterior.", a:"Si juntas mucho las escápulas al final, entra más la espalda media."},
@@ -2820,6 +2841,7 @@ function zonasDe(nombre){
   if (!IDX_Z){ IDX_Z = new Map(); Object.entries(ZONAS_EJ).forEach(([k, v]) => IDX_Z.set(claveEj(k), v)); }
   const pe = planEj(nombre) || {};
   const d = IDX_Z.get(claveEj(nombre)) || (pe.hoja && IDX_Z.get(claveEj(pe.hoja))) || ((pe.antes || []).map(a => IDX_Z.get(claveEj(a))).find(Boolean));
+  if (pe.zonas) return Object.assign({ficha:true}, pe.zonas);
   if (d) return Object.assign({ficha:true}, d);
   const lib = bibEj(nombre); if (!lib || lib.m === "cardio") return null;
   const z = {};
