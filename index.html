@@ -1393,16 +1393,19 @@ setInterval(() => { if (S.timer) pintarTimer(); }, 500);
 // Plan del día: opciones para las comidas que prepara él; las demás se escriben a mano.
 const PLAN_COMIDAS = {
   "Desayuno": [
+    {n:"Mi desayuno: avena con leche y proteína", d:"50 g de avena + 250 ml de leche semidesnatada + 1 cacito de proteína", kcal:425, p:39, c:44, g:9},
     {n:"Tostadas con huevo", d:"2 tostadas de pan integral con tomate y un chorrito de aceite + 2 huevos + 1 loncha de pavo", kcal:380, p:25, c:36, g:15},
     {n:"Avena con proteína", d:"40 g de avena + 200 ml de leche semidesnatada + 1 cacito de proteína + 1 fruta (ideal en días de pierna)", kcal:410, p:38, c:50, g:7},
     {n:"Bocadillo de atún", d:"80 g de pan integral + 1 lata de atún al natural + tomate", kcal:300, p:25, c:40, g:4}
   ],
   "Media mañana": [
+    {n:"Mis tortitas con cacahuete y yogur", d:"3 tortitas de arroz + 1 cucharada (15 g) de crema de cacahuete en total + 1 plátano + 1 yogur proteico", kcal:380, p:19, c:54, g:9},
     {n:"Batido de proteína y plátano", d:"1 cacito de proteína con agua + 1 plátano", kcal:240, p:25, c:30, g:2},
     {n:"Yogur proteico con fruta", d:"Yogur proteico o skyr + 1 fruta + 20 g de avena", kcal:250, p:22, c:35, g:3},
     {n:"Tortitas de arroz con pavo", d:"2 tortitas de arroz + 80 g de pavo o jamón cocido + 1 fruta", kcal:230, p:20, c:33, g:2}
   ],
   "Merienda": [
+    {n:"Mi batido con fruta", d:"1 cacito de proteína con agua + 1 fruta", kcal:200, p:24, c:21, g:2},
     {n:"Bocadillo pequeño", d:"60-80 g de pan integral con pavo, jamón cocido, atún o tranchetes + 1 fruta", kcal:300, p:22, c:45, g:4},
     {n:"Skyr con plátano y cacahuete", d:"Skyr o yogur proteico + 1 plátano + 10 g de crema de cacahuete", kcal:280, p:22, c:35, g:6},
     {n:"Huevos cocidos", d:"2 huevos cocidos + 1 rebanada de pan + 1 fruta (añade un batido otra comida para llegar a la proteína)", kcal:290, p:16, c:32, g:11}
@@ -1419,7 +1422,7 @@ function planDiaHTML(f){
     if (opts){
       const elegida = its.find(i => i.plan);
       return `<div class="pd-meal">${cab}<div class="pd-opts">${opts.map((o, n) => {
-        const on = !!(elegida && elegida.plan === c + "|" + n);
+        const on = !!(elegida && elegida.nombre === o.n);
         return `<button type="button" class="pd-opt" data-act="planComida" data-comida="${esc(c)}" data-n="${n}" aria-pressed="${on}">
           <span><b>${on ? "✓ " : ""}${esc(o.n)}</b><span class="muted">${esc(o.d)}</span></span>
           <span class="pd-k">${fmt(o.kcal)} kcal<br>P ${fmt(o.p)} g</span></button>`;
@@ -3811,7 +3814,7 @@ view.addEventListener("click", async e => {
     const o = (planOpciones(c) || [])[n]; if (!o) return;
     const d = Object.assign({fecha:f, items:[]}, S.diario[f] || {});
     const tag = c + "|" + n;
-    const yaEstaba = (d.items||[]).some(i => i.plan === tag);
+    const yaEstaba = (d.items||[]).some(i => i.comida === c && i.plan && i.nombre === o.n);
     d.items = (d.items||[]).filter(i => !(i.comida === c && i.plan));
     if (!yaEstaba) d.items = d.items.concat([{id:nuevoId(), comida:c, plan:tag, nombre:o.n, cantTxt:o.d, kcal:o.kcal, p:o.p, c:o.c, g:o.g}]);
     S.ultComida = c;
