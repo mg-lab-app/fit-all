@@ -798,7 +798,7 @@ function planAgarre(){
 }
 // 25/11/2026: equilibrar zonas (cabeza larga del tríceps y aductores)
 const EQUILIBRIO_C3 = {
-  1: {"Extensión en polea alta con cuerda": {nombre:"Extensión en polea por encima de la cabeza (cuerda)", hoja:"Extensión en polea alta con cuerda",
+  1: {"Extensión en polea alta con cuerda": {nombre:"Extensión en polea por encima de la cabeza (cuerda)",
       tecnica:"De espaldas a la polea alta, cuerda por detrás de la cabeza y codos apuntando al frente. Baja hasta notar el tríceps estirado y extiende sin mover los codos."}},
   7: {"Prensa inclinada 45°": {tecnica:"Pies altos y algo más abiertos que las caderas, puntas un poco hacia fuera. Baja hasta donde la pelvis no se despegue del respaldo y empuja con los talones.",
       zonas:{z:{glu_mayor:1, aductor:1, femoral:0.5, cuad_med:0.5, cuad_lat:0.5}, f:"Con los pies altos y abiertos la cadera se dobla más: trabajan sobre todo el glúteo y los aductores, y el cuádriceps ayuda.", a:"Pies bajos y a la anchura de las caderas: vuelve a ser sobre todo cuádriceps."}}}
@@ -815,9 +815,21 @@ function equilibrioC3(){
   if (hecho){ S.plan = planDe(hoyISO()); guardarPlanDoc(); }
   return hecho;
 }
+// 26/11/2026: la hoja ya tiene la fila con el nombre nuevo (semanas 10-12); se deja de enviar con el nombre viejo
+function equilibrioHoja(){
+  const d = S.planDoc || {}; if (!d.desde || lsGet("fitall_equilibrio_hoja")) return;
+  const N = "Extensión en polea por encima de la cabeza (cuerda)", V = "Extensión en polea alta con cuerda";
+  let hecho = false;
+  d.sesiones = (d.sesiones || []).map(s => s.n !== 1 ? s : Object.assign({}, s, {ejercicios: (s.ejercicios || []).map(e => {
+    if (e.nombre !== N || e.hoja !== V) return e;
+    hecho = true; const x = Object.assign({}, e); delete x.hoja; return x;
+  })}));
+  lsSet("fitall_equilibrio_hoja", 1);
+  if (hecho){ S.plan = planDe(hoyISO()); guardarPlanDoc(); }
+}
 function migrarPlan(){
   const d = S.planDoc || {};
-  if (d.desde){ equilibrioC3(); return; }    // ya tiene el ciclo 3
+  if (d.desde){ equilibrioC3(); equilibrioHoja(); return; }    // ya tiene el ciclo 3
   S.plan = d.sesiones || [];
   const P = S.plan;
   if (!P.length) return;
@@ -828,7 +840,7 @@ function migrarPlan(){
   S.planDoc = {sesiones: JSON.parse(JSON.stringify(PLAN_C3)), desde: C3_DESDE, anteriores: [{hasta: addDias(C3_DESDE, -1), sesiones: S.plan}]};
   S.plan = planDe(hoyISO());
   guardarPlanDoc();
-  equilibrioC3();
+  equilibrioC3(); equilibrioHoja();
 }
 async function init(){
   render();
